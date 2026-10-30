@@ -1,0 +1,299 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIQUID GLASS — an appearance option, not a repaint of the paper theme.
+
+   Modelled on Apple's Liquid Glass guidance (developer.apple.com/technologyoverviews/
+   liquid-glass + /adopting-liquid-glass):
+     • the material is a distinct FUNCTIONAL layer floating above content, not a
+       background for content — so only chrome (header, deck, readout, transport,
+       sheet, library, card) becomes glass and the artwork stays printed;
+     • it refracts and tints whatever sits beneath, so the page needs real colour
+       underneath: a slow, wide colour field instead of flat paper;
+     • every pane carries a specular edge — a bright 1px top rim, a soft inner glow,
+       a cool fringe where light bends at the bottom edge, and one long shadow;
+     • controls are concentric with their containers (larger radii, pill buttons);
+     • restraint: list rows and text keep the printed treatment, because glass on
+       glass is exactly what the guidance warns against.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="liquid"] {
+  color-scheme: light;
+  --paper: #e8eef8;
+  --panel: rgba(255, 255, 255, 0.42);
+  --panel-2: rgba(255, 255, 255, 0.22);
+  --ink: #10182a;
+  --ink-soft: #2d3750;
+  --graphite: #5d6a85;
+  --hair: rgba(255, 255, 255, 0.58);
+  --accent: #0a84ff;
+  --accent-soft: rgba(10, 132, 255, 0.16);
+  --accent-ink: #0a5dc0;
+  --raised: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 18px 40px -26px rgba(16, 26, 48, 0.7);
+  --raised-sm: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 6px 16px -10px rgba(16, 26, 48, 0.55);
+  --well: inset 0 1px 2px rgba(16, 26, 48, 0.12), inset 0 -1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* the world the glass refracts — four soft light sources, slowly drifting */
+html[data-theme="liquid"] body {
+  background:
+    radial-gradient(58% 46% at 16% 6%, #ffd7e9 0%, rgba(255, 215, 233, 0) 62%),
+    radial-gradient(52% 44% at 86% 10%, #cbe2ff 0%, rgba(203, 226, 255, 0) 64%),
+    radial-gradient(66% 56% at 50% 104%, #ccfff0 0%, rgba(204, 255, 240, 0) 66%),
+    radial-gradient(50% 40% at 78% 62%, #e7d9ff 0%, rgba(231, 217, 255, 0) 70%),
+    linear-gradient(165deg, #eef4fc 0%, #e2e9f6 52%, #d7e2f3 100%);
+  background-attachment: fixed;
+}
+
+html[data-theme="liquid"] body::before {
+  content: "";
+  position: fixed;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(38% 32% at 30% 30%, rgba(255, 190, 220, 0.55), transparent 70%),
+    radial-gradient(34% 30% at 70% 38%, rgba(160, 200, 255, 0.5), transparent 72%),
+    radial-gradient(30% 26% at 48% 74%, rgba(170, 255, 226, 0.45), transparent 72%);
+  filter: blur(30px);
+  animation: lg-drift 34s ease-in-out infinite alternate;
+}
+
+html[data-theme="liquid"] body::after {
+  opacity: 0.03;
+  mix-blend-mode: soft-light;
+}
+
+@keyframes lg-drift {
+  from { transform: translate3d(-2%, -1%, 0) scale(1); }
+  to   { transform: translate3d(2%, 2%, 0) scale(1.08); }
+}
+
+/* ── the glass recipe ──────────────────────────────────────────────────────
+   One shared surface: bright rim, inner glow, cool refraction fringe, deep but
+   distant shadow. The radius is larger than the paper theme's so controls can
+   nest concentrically inside their containers. */
+html[data-theme="liquid"] :is(header, .lib, .deck, .readout, .transport, .sheet, .np) {
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.66) 0%, rgba(255, 255, 255, 0.30) 44%, rgba(255, 255, 255, 0.46) 100%);
+  -webkit-backdrop-filter: blur(26px) saturate(190%) brightness(1.04);
+  backdrop-filter: blur(26px) saturate(190%) brightness(1.04);
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -10px 20px -18px rgba(90, 140, 255, 0.7),
+    0 1px 1px rgba(16, 26, 48, 0.05),
+    0 22px 46px -26px rgba(16, 26, 48, 0.7);
+}
+
+/* a specular sweep across the top of each pane */
+html[data-theme="liquid"] :is(header, .lib, .deck, .readout, .transport, .sheet, .np)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 70% at 14% -18%, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0) 58%),
+    radial-gradient(90% 60% at 92% 118%, rgba(150, 190, 255, 0.28), rgba(255, 255, 255, 0) 62%);
+  opacity: 0.9;
+}
+
+html[data-theme="liquid"] header {
+  position: relative;
+  border-radius: 0 0 22px 22px;
+  border-top: 0;
+}
+html[data-theme="liquid"] .lib {
+  position: relative;
+  border-radius: 22px;
+  margin: 10px 0 0 10px;
+}
+html[data-theme="liquid"] .deck {
+  position: relative;
+  border-radius: 26px;
+  overflow: hidden;
+}
+html[data-theme="liquid"] .readout {
+  position: relative;
+  border-radius: 20px;
+  overflow: hidden;
+}
+html[data-theme="liquid"] .transport {
+  position: relative;
+  border-radius: 999px;
+  padding-left: 14px;
+  padding-right: 18px;
+}
+html[data-theme="liquid"] .sheet {
+  border-radius: 26px 0 0 26px;
+  border-right: 0;
+}
+html[data-theme="liquid"] .np {
+  border-radius: 26px;
+}
+
+/* the platter keeps its printed sleeve, but the glass card around it loses the
+   paper grain so the metal reads as polished rather than matte */
+html[data-theme="liquid"] .stage {
+  background: radial-gradient(120% 120% at 50% 0%, rgba(255, 255, 255, 0.9), rgba(226, 236, 250, 0.7) 60%, rgba(206, 219, 240, 0.75));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 -18px 30px -24px rgba(20, 40, 90, 0.5),
+    0 14px 30px -22px rgba(16, 26, 48, 0.6);
+}
+
+/* ── controls: concentric, pill-shaped, glassy, with a live tint ───────────── */
+html[data-theme="liquid"] .rnd {
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.42) 52%, rgba(255, 255, 255, 0.66));
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  color: var(--ink);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 -8px 14px -12px rgba(90, 140, 255, 0.75),
+    0 8px 18px -12px rgba(16, 26, 48, 0.6);
+}
+html[data-theme="liquid"] .rnd:hover { background: linear-gradient(160deg, rgba(255, 255, 255, 1), rgba(255, 255, 255, 0.55)); }
+html[data-theme="liquid"] .rnd:active { transform: translateY(1px) scale(0.985); }
+
+/* the play button is the one strongly tinted element, as in the guidance */
+html[data-theme="liquid"] .rnd.main,
+html[data-theme="liquid"] .transport .rnd.main {
+  background: linear-gradient(160deg, #4aa8ff 0%, var(--accent) 46%, #0457b8 100%);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -10px 18px -14px rgba(0, 0, 0, 0.5),
+    0 12px 26px -14px rgba(10, 105, 220, 0.85);
+}
+
+html[data-theme="liquid"] .seg,
+html[data-theme="liquid"] .btn,
+html[data-theme="liquid"] .search,
+html[data-theme="liquid"] .gear,
+html[data-theme="liquid"] .lib-btn {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.34));
+  border: 1px solid rgba(255, 255, 255, 0.66);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  backdrop-filter: blur(18px) saturate(170%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 8px 20px -16px rgba(16, 26, 48, 0.6);
+  border-radius: 999px;
+}
+html[data-theme="liquid"] .search input {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+html[data-theme="liquid"] .seg { border-radius: 999px; padding: 3px; }
+html[data-theme="liquid"] .seg-b[aria-checked="true"] {
+  background: linear-gradient(160deg, #ffffff, rgba(255, 255, 255, 0.72));
+  box-shadow: inset 0 1px 0 #fff, 0 4px 12px -8px rgba(16, 26, 48, 0.55);
+  color: var(--ink);
+}
+
+/* ── rails: light wells with a tinted fill ────────────────────────────────── */
+html[data-theme="liquid"] .seek .rail,
+html[data-theme="liquid"] .vol .track .rail,
+html[data-theme="liquid"] .np-rail {
+  background: rgba(255, 255, 255, 0.5);
+  box-shadow: inset 0 1px 3px rgba(16, 26, 48, 0.22), inset 0 -1px 0 rgba(255, 255, 255, 0.7);
+}
+html[data-theme="liquid"] .seek .rail b,
+html[data-theme="liquid"] .vol .track .rail b,
+html[data-theme="liquid"] .np-rail b {
+  background: linear-gradient(90deg, #7cc4ff, var(--accent));
+  box-shadow: 0 0 12px rgba(10, 132, 255, 0.55);
+}
+html[data-theme="liquid"] .seek .knob,
+html[data-theme="liquid"] .vol .track b {
+  background: linear-gradient(160deg, #fff, #eaf2ff);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 6px rgba(16, 26, 48, 0.35), inset 0 1px 0 #fff;
+}
+
+/* ── readout: engraved labels stay printed, the plate is glass ────────────── */
+html[data-theme="liquid"] .readout .cell { background: transparent; box-shadow: none; }
+html[data-theme="liquid"] .readout .cell + .cell { border-left: 1px solid rgba(255, 255, 255, 0.55); }
+html[data-theme="liquid"] .readout .k,
+html[data-theme="liquid"] .readout .lbl { color: rgba(16, 26, 48, 0.55); }
+html[data-theme="liquid"] .readout .v { color: var(--ink); }
+
+/* ── library: rows tint on hover, the selected row becomes a glass pill ───── */
+html[data-theme="liquid"] .row {
+  border-radius: 14px;
+  transition: background 0.18s, box-shadow 0.18s;
+}
+html[data-theme="liquid"] .row:hover { background: rgba(255, 255, 255, 0.4); }
+html[data-theme="liquid"] .row.is-on {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.44));
+  box-shadow: inset 0 1px 0 #fff, inset 0 -6px 14px -12px rgba(90, 140, 255, 0.8), 0 8px 20px -16px rgba(16, 26, 48, 0.6);
+}
+html[data-theme="liquid"] .chips .chip {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  color: var(--ink-soft);
+}
+html[data-theme="liquid"] .sleeve {
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: inset 0 1px 0 #fff, 0 10px 24px -16px rgba(16, 26, 48, 0.7);
+}
+
+/* ── the settings sheet reads as a slab of glass over the page ───────────── */
+html[data-theme="liquid"] .scrim { background: rgba(16, 26, 48, 0.24); backdrop-filter: blur(2px); }
+html[data-theme="liquid"] .sheet-body { padding-top: 6px; }
+html[data-theme="liquid"] .kvt { border-bottom: 1px solid rgba(255, 255, 255, 0.45); }
+
+/* ── Nowhere / video mode reuse the same material ────────────────────────── */
+html[data-theme="liquid"] .yt-row,
+html[data-theme="liquid"] .vt-row {
+  border-radius: 16px;
+}
+html[data-theme="liquid"] .vt-row:hover { background: rgba(255, 255, 255, 0.42); }
+html[data-theme="liquid"] .yt-badge {
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(16px) saturate(180%);
+  box-shadow: inset 0 1px 0 #fff, 0 10px 24px -18px rgba(16, 26, 48, 0.7);
+}
+html[data-theme="liquid"] .like-toast,
+html[data-theme="liquid"] .scrub-bubble {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: inset 0 1px 0 #fff, 0 16px 34px -20px rgba(16, 26, 48, 0.75);
+  color: var(--ink);
+}
+
+/* ── accessibility: honour reduced transparency and reduced motion ───────── */
+@media (prefers-reduced-transparency: reduce) {
+  html[data-theme="liquid"] :is(header, .lib, .deck, .readout, .transport, .sheet, .np) {
+    background: #f2f6fc;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  html[data-theme="liquid"] body::before { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme="liquid"] body::before { animation: none; }
+}
+@media (prefers-contrast: more) {
+  html[data-theme="liquid"] :is(header, .lib, .deck, .readout, .transport, .sheet, .np) {
+    background: rgba(255, 255, 255, 0.92);
+    border-color: rgba(16, 26, 48, 0.35);
+  }
+  html[data-theme="liquid"] .readout .k,
+  html[data-theme="liquid"] .readout .lbl { color: var(--ink); }
+}
+
+/* phone: the same material, tighter max radius so it never looks like a card
+   floating inside a card */
+@media (max-width: 760px) {
+  html[data-theme="liquid"] header { border-radius: 0 0 18px 18px; }
+  html[data-theme="liquid"] .deck,
+  html[data-theme="liquid"] .readout,
+  html[data-theme="liquid"] .transport { border-radius: 18px; }
+  html[data-theme="liquid"] .transport { border-radius: 999px; }
+  html[data-theme="liquid"] .sheet { border-radius: 22px 22px 0 0; border-left: 0; }
+}

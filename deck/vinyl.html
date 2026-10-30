@@ -1,0 +1,99 @@
+<!-- deck:start -->
+<section class="deck" id="deck" aria-label="Turntable">
+  <div class="deck-head">
+    <div class="deck-brand">MEASURED <b>·</b> MK II</div>
+    <div class="deck-serial" id="vd-serial">SIDE A · BELT DRIVE · 33⅓</div>
+  </div>
+
+  <div class="deck-body">
+    <div class="stage">
+      <div class="platter">
+        <div class="spin" id="vd-spin">
+          <canvas id="vd-disc" width="520" height="520" role="img" aria-label="Vinyl record"></canvas>
+          <div class="dlabel">
+            <div class="dl-cat" id="vd-cat">M—001</div>
+            <div class="dl-artist" id="vd-artist">—</div>
+            <div class="dl-title" id="vd-title">—</div>
+            <div class="dl-meta">33⅓ · STEREO</div>
+          </div>
+        </div>
+        <div class="sheen"></div>
+        <div class="spindle"></div>
+      </div>
+
+      <svg class="arm" viewBox="0 0 300 300" aria-hidden="true">
+        <defs>
+          <linearGradient id="vd-rod" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#8e8779"/>
+            <stop offset=".35" stop-color="#ded7c7"/>
+            <stop offset=".6" stop-color="#a9a294"/>
+            <stop offset="1" stop-color="#6f695d"/>
+          </linearGradient>
+          <linearGradient id="vd-cw" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#b3ab9b"/>
+            <stop offset=".45" stop-color="#6d675c"/>
+            <stop offset="1" stop-color="#3b3730"/>
+          </linearGradient>
+          <radialGradient id="vd-base" cx=".38" cy=".32" r=".8">
+            <stop offset="0" stop-color="#efe9dc"/>
+            <stop offset=".55" stop-color="#c8c1b1"/>
+            <stop offset="1" stop-color="#8b8477"/>
+          </radialGradient>
+        </defs>
+
+        <!-- fixed bearing housing -->
+        <circle cx="272" cy="44" r="17.5" fill="url(#vd-base)" opacity=".97"/>
+        <circle cx="272" cy="44" r="17.5" fill="none" stroke="rgba(20,19,16,.4)" stroke-width=".8"/>
+        <circle cx="272" cy="44" r="11" fill="none" stroke="rgba(255,255,255,.5)" stroke-width=".7"/>
+        <path d="M262 49 a15 15 0 0 0 20 0" fill="none" stroke="rgba(20,19,16,.22)" stroke-width=".8"/>
+        <circle cx="272" cy="44" r="4.6" fill="#3a362f"/>
+        <circle cx="270.8" cy="42.8" r="1.5" fill="rgba(255,255,255,.6)"/>
+
+        <!-- rotating assembly: counterweight · tube · headshell · cartridge -->
+        <g class="arm-g" id="vd-arm">
+          <rect x="-46" y="-8.5" width="30" height="17" rx="3.5" fill="url(#vd-cw)"/>
+          <rect x="-46" y="-8.5" width="30" height="3" rx="1.5" fill="rgba(255,255,255,.35)"/>
+          <circle cx="-52" cy="0" r="7.5" fill="url(#vd-cw)"/>
+          <circle cx="-52" cy="0" r="7.5" fill="none" stroke="rgba(0,0,0,.35)" stroke-width=".7"/>
+          <rect x="-16" y="-3" width="150" height="6" rx="3" fill="url(#vd-rod)"/>
+          <rect x="-16" y="-2.6" width="150" height="1.5" rx=".75" fill="rgba(255,255,255,.5)"/>
+          <g transform="translate(128 0) rotate(16)">
+            <rect x="0" y="-5" width="26" height="10" rx="2.2" fill="#2f2c26"/>
+            <rect x="0" y="-5" width="26" height="3" rx="1.5" fill="rgba(255,255,255,.22)"/>
+            <rect x="5" y="4" width="17" height="8.5" rx="1.6" fill="#dc3f19"/>
+            <rect x="5" y="4" width="17" height="2" rx="1" fill="rgba(255,255,255,.4)"/>
+            <path d="M21 12.5 l4.6 5.2" stroke="#1b1a17" stroke-width="1.5" stroke-linecap="round"/>
+            <circle cx="26" cy="18.2" r="1" fill="#0e0d0b"/>
+          </g>
+        </g>
+      </svg>
+    </div>
+
+    <div class="deck-side">
+      <div class="deck-id">
+        <div class="id-cat"><span id="vd-cat2">M—001 / 148</span><span class="id-sep">·</span><span>SIDE A</span></div>
+        <div class="id-artist" id="vd-artist2">—</div>
+        <div class="id-title" id="vd-title2">—</div>
+        <div class="id-matrix"><span>MATRIX</span> <b id="vd-matrix">MEAS-001-A1</b> <span class="id-dot">·</span> <span>LACQUER CUT</span></div>
+      </div>
+
+      <div class="deck-row">
+        <div class="deck-cell"><div class="k">Speed</div><div class="v">33⅓ <small>rpm</small></div></div>
+        <div class="deck-cell"><div class="k">Platter</div><div class="v" id="vd-rpm">0.0</div></div>
+        <div class="deck-cell"><div class="k">Tracking</div><div class="v" id="vd-radius">—</div></div>
+        <div class="deck-cell"><div class="k">Cartridge</div><div class="v">MC <small>0.4 mV</small></div></div>
+      </div>
+
+      <div class="groove">
+        <div class="gline"><div class="gfill" id="vd-gfill"></div></div>
+        <div class="gcap" id="vd-gcap">00:00 / 00:00</div>
+      </div>
+
+      <p class="deck-note">
+        <span class="lamp" id="vd-lamp"></span>
+        <span id="vd-note">Idle — platter stopped. The arm sits on its rest until a track starts.</span>
+      </p>
+    </div>
+  </div>
+</section>
+<!-- deck:end -->

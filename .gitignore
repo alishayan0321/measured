@@ -1,0 +1,65 @@
+# audio is personal and enormous
+songs/
+*.webm
+*.mp3
+*.m4a
+*.flac
+
+# build output
+release/
+dist/
+out/
+build/
+node_modules/
+*.apk
+*.aab
+*.exe
+*.idsig
+*.keystore
+
+# intermediates
+assets/
+tmp/
+classes/
+dex/
+gen/
+res.zip
+_*.cjs
+*.log
+
+# rust / tauri
+**/target/
+*.pdb
+*.wav
+rust/desktop/dist/
+
+# --- Rust / Tauri ---
+rust/target/
+rust/cargo-home/
+rust/rustup-home/
+rust/tmp/
+rust/desktop/dist/
+rust/desktop/yt-dlp.exe
+rust/desktop/icons/*.png.bak# rust build + local toolchain homes
+rust/target/
+rust/tmp/
+rust/cargo-home/
+rust/rustup-home/
+rust/qa/work/
+rust/desktop/dist/
+rust/**/*.exe
+*.pdb
+
+# --- QA / dev scratch (never ship) ---
+rust/qa/cdp/
+rust/qa/work/
+rust/qa/*.png
+android/libs-expanded/
+android/libs-raw/
+android/_d8test/
+*.jks
+.env
+*.env
+
+rust/qa/
+

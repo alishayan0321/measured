@@ -1,0 +1,21 @@
+[package]
+name = "measured-core"
+description = "Library scanning, tag reading, decoding, fingerprinting and cover processing for MEASURED"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+symphonia = { version = "0.5", features = ["all"] }
+lofty = "0.22"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+rustfft = "6"
+walkdir = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+md5 = "0.7"
+anyhow = "1"
+
+[lib]
+name = "measured_core"
+crate-type = ["rlib", "cdylib"]

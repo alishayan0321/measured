@@ -1,0 +1,113 @@
+{
+  "name": "measured",
+  "productName": "MEASURED",
+  "version": "2.0.0",
+  "description": "MEASURED — your local music library, as a turntable.",
+  "main": "main.cjs",
+  "author": "Ali",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "^40.10.2",
+    "electron-builder": "^25.1.8",
+    "playwright-core": "^1.64.1",
+    "resedit": "^3.1.0"
+  },
+  "build": {
+    "appId": "com.measured.player",
+    "productName": "MEASURED",
+    "asar": true,
+    "compression": "store",
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "package.json",
+      "!node_modules/ffmpeg-static/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../../player",
+        "to": "player",
+        "filter": [
+          "index.html",
+          "api.js",
+          "fingerprints.js",
+          "fingerprints.json",
+          "library.json",
+          "deck/**",
+          "lib/**",
+          "thumbs/**"
+        ]
+      },
+      {
+        "from": "../../songs",
+        "to": "songs",
+        "filter": [
+          "**/*.webm",
+          "**/*.mp3",
+          "**/*.m4a",
+          "**/*.flac",
+          "**/*.opus",
+          "**/*.ogg",
+          "**/*.wav",
+          "**/*.m4b",
+          "**/*.aac",
+          "**/*.oga",
+          "**/*.wma",
+          "**/*.ape",
+          "**/*.aiff",
+          "**/*.aif",
+          "**/*.alac",
+          "**/*.mka",
+          "**/*.wv",
+          "**/*.tta",
+          "**/*.caf",
+          "**/*.amr",
+          "**/*.ac3",
+          "**/*.dts",
+          "**/*.dsf",
+          "**/*.dff",
+          "**/*.mp4"
+        ]
+      },
+      {
+        "from": "node_modules/ffmpeg-static/ffmpeg.exe",
+        "to": "ffmpeg.exe"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icon.png",
+      "signAndEditExecutable": false,
+      "artifactName": "MEASURED-${version}-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MEASURED",
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "MEASURED-${version}-setup.${ext}"
+    },
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    }
+  },
+  "dependencies": {
+    "ffmpeg-static": "^5.3.0"
+  }
+}
