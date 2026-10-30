@@ -79,16 +79,30 @@ fn bundled_dir(app: &AppHandle) -> Option<PathBuf> {
             return Some(clean(p));
         }
     }
-    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("..")
-        .join("songs");
-    dev.is_dir().then(|| clean(dev))
+    dev_root().map(|r| r.join("songs")).filter(|p| p.is_dir()).map(clean)
 }
 /// Absolute, ..-free path: Tauri's asset protocol rejects paths that walk up.
 fn clean(p: PathBuf) -> PathBuf {
     std::fs::canonicalize(&p).unwrap_or(p)
+}
+
+/// Development root, resolved at RUNTIME so no build-machine path is compiled in.
+/// Honours MEASURED_DEV_ROOT, else walks up from the executable looking for songs/ or thumbs/.
+fn dev_root() -> Option<PathBuf> {
+    if let Ok(v) = std::env::var("MEASURED_DEV_ROOT") {
+        let p = PathBuf::from(v);
+        if p.is_dir() {
+            return Some(clean(p));
+        }
+    }
+    let mut dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    for _ in 0..6 {
+        if dir.join("songs").is_dir() || dir.join("thumbs").is_dir() {
+            return Some(clean(dir));
+        }
+        dir = dir.parent()?.to_path_buf();
+    }
+    None
 }
 
 fn added_dir(app: &AppHandle) -> PathBuf {
@@ -118,11 +132,7 @@ fn thumbs_dir(app: &AppHandle) -> Option<PathBuf> {
             return Some(clean(p));
         }
     }
-    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("thumbs");
-    dev.is_dir().then(|| clean(dev))
+    dev_root().map(|r| r.join("thumbs")).filter(|p| p.is_dir()).map(clean)
 }
 
 fn settings_path(app: &AppHandle) -> PathBuf {

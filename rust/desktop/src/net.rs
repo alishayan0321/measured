@@ -175,7 +175,10 @@ fn ytdlp_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
             return Some(p);
         }
     }
-    let dev = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("yt-dlp.exe");
+    let dev = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join("yt-dlp.exe")))
+        .unwrap_or_default();
     dev.is_file().then_some(dev)
 }
 
