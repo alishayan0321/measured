@@ -1059,6 +1059,20 @@ body.video-mode .hero{gap:0}
 
 
 
+
+/* ---- up next ---- */
+.up-pane{display:flex;flex-direction:column;min-height:0;flex:1 1 auto;overflow:auto;padding:0 2px 14px}
+.up-pane[hidden]{display:none}
+.up-h{font:600 9.5px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-soft);opacity:.72;padding:12px 10px 7px}
+.up-row{display:flex;align-items:center;gap:10px;width:100%;padding:7px 9px;border:1px solid transparent;border-radius:3px;background:none;color:inherit;text-align:left;cursor:pointer}
+.up-row:hover,.up-row:focus-visible{border-color:var(--hair);background:rgba(127,127,127,.07);outline:none}
+.up-i{flex:1 1 auto;min-width:0}
+.up-i b{display:block;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.up-i i{display:block;font:400 11px/1.5 var(--sans);font-style:normal;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.up-bar{flex:none;width:36px;height:3px;border-radius:2px;background:rgba(127,127,127,.22);overflow:hidden}
+.up-bar span{display:block;height:100%;background:var(--accent)}
+.up-tag{flex:none;font:600 9px/1 var(--mono);letter-spacing:.1em;color:var(--ink-soft);opacity:.62}
+.up-empty{padding:4px 10px 10px;font-size:11.5px;line-height:1.5;color:var(--ink-soft);opacity:.78}
 </style>
 </head>
 <body>
@@ -1087,6 +1101,7 @@ body.video-mode .hero{gap:0}
 <div class="lib-tabs" role="tablist" aria-label="Source">
 <button class="lib-tab is-on" id="tab-lib" role="tab" aria-selected="true">Library</button>
 <button class="lib-tab" id="tab-yt" role="tab" aria-selected="false">Nowhere</button>
+<button class="lib-tab" id="tab-up" role="tab" aria-selected="false">Up next</button>
 </div>
 <div class="lib-list" id="list" role="listbox" aria-label="Track queue"></div>
 <div class="yt-pane" id="yt-pane" hidden>
@@ -1100,6 +1115,12 @@ body.video-mode .hero{gap:0}
 </div>
 <div class="lib-list yt-list" id="yt-list" role="listbox" aria-label="Results"></div>
 <p class="yt-note" id="yt-note">Official YouTube player. Nothing is downloaded.</p>
+</div>
+<div class="up-pane" id="up-pane" hidden>
+<div class="up-h">In your library</div>
+<div id="up-local"></div>
+<div class="up-h">From the web <span class="up-tag">30s</span></div>
+<div id="up-web"></div>
 </div>
     </section>
 
@@ -1340,6 +1361,10 @@ body.video-mode .hero{gap:0}
 
 <script src="lib/parse-name.js"></script>
 <script src="fingerprints.js"></script>
+<script src="lib/recommend.js"></script>
+<script src="lib/recommend-features.js"></script>
+<script src="lib/recommend-wire.js"></script>
+<script src="lib/shelf.js"></script>
 <script src="api.js"></script>
 <script>
 (() => {
@@ -1361,6 +1386,44 @@ body.video-mode .hero{gap:0}
   }
 
   let TRACKS = [], VIEW = [], cur = -1, playing = false, median = null;
+
+  /* ---- ranker plug ---------------------------------------------------------
+     The math lives in lib/recommend.js, the feature building in
+     lib/recommend-features.js, the storage/arm/gating in lib/recommend-wire.js.
+     This adapter only reports what the player currently holds. */
+  let RANK = null;
+  const RANK_TRACK = new Map();
+  /* Online shelf: previews buffered in memory, plus the clip currently playing
+     from it (null when a local file is playing). */
+  let SHELF = null, ONLINE = null;
+  /* 768 floats per track, produced offline by tools/embed (EmbeddingGemma 2 q4).
+     ~1 MB of JSON for a 148-track library; a miss is not an error. */
+  async function loadEmbeddings() {
+    try {
+      const r = await fetch('embeddings.json', { cache: 'no-cache' });
+      if (!r.ok) return 0;
+      const j = await r.json();
+      const v = (j && j.vectors) || {};
+      let hit = 0;
+      for (const t of TRACKS) { if (t.file && v[t.file]) { t.emb = v[t.file]; hit++; } }
+      if (hit) console.info('embeddings: ' + hit + ' tracks');
+      return hit;
+    } catch (e) { return 0; }
+  }
+
+  function rankLib() {
+    return {
+      tracks: TRACKS, view: VIEW, curIndex: cur, cur: VIEW[cur] || null,
+      bandsOf(file) {
+        const t = RANK_TRACK.get(file);
+        return t && t.bands && t.bands.length ? t.bands : null;
+      },
+      lufsOf(file) {
+        const t = RANK_TRACK.get(file);
+        return t && typeof t.lufs === 'number' && t.lufs ? t.lufs : null;
+      },
+    };
+  }
   let STATS = {};
   let analyser = null, freq = null, ac = null;
   let analysisEl = null;
@@ -1443,7 +1506,12 @@ body.video-mode .hero{gap:0}
     return base + '<path class="sig" d="' + d + '"/>';
   }
 
-  async function boot() {
+  async function boot(opts) {
+    const keepPlayback = !!(opts && opts.keep);
+    const prevFile = (cur >= 0 && VIEW[cur] && VIEW[cur].file) ? VIEW[cur].file : null;
+    const prevTime = (audio && audio.currentTime) || 0;
+    const wasPlaying = !!(audio && !audio.paused && !audio.ended);
+    const wasOnline = !!ONLINE;
     let lib = { tracks: [], stats: {} };
     let fp = [];
     try {
@@ -1467,8 +1535,71 @@ body.video-mode .hero{gap:0}
     }).sort((a, b) => (a.artist + a.title).localeCompare(b.artist + b.title, undefined, { sensitivity: 'base' }));
     STATS = lib.stats || {};
 
+    /* Perceptual vectors from EmbeddingGemma 2 (offsets baked at build time).
+       Optional: a track without one simply has no embCos feature, which the
+       ranker treats as unknown rather than as a made-up mid value. */
+    const EMB_N = await loadEmbeddings();
+
     $('count').textContent = TRACKS.length + ' TRACKS';
     VIEW = TRACKS.slice();
+
+    /* The ranker stores through the same get/set the rest of the app uses, so
+       the model and the play log travel with the library on every platform. */
+    TRACKS.forEach((t) => { if (t.file) RANK_TRACK.set(t.file, t); });
+    if (window.RecommendWire) {
+      /* PlayerAPI.get is async in the desktop/android shells (invoke) and sync in
+         the web shell, so resolve both keys first and hand the ranker a sync view
+         of them. A Promise reaching Model.fromJSON would throw and silently leave
+         RANK null — that is exactly what happened in the packaged app. */
+      const KM = 'measured.rec.model', KL = 'measured.rec.log';
+      try {
+        PlayerAPI.set('measured.rec.boot', JSON.stringify({
+          wire: !!window.RecommendWire, scripts: !!window.RecommendFeatures, emb: EMB_N, at: Date.now(),
+        }));
+      } catch (e) {}
+      Promise.all([Promise.resolve(PlayerAPI.get(KM, null)), Promise.resolve(PlayerAPI.get(KL, []))])
+        .then((pair) => {
+          const cache = {};
+          cache[KM] = pair[0] == null ? null : pair[0];
+          cache[KL] = pair[1] == null ? [] : pair[1];
+          try { PlayerAPI.set('measured.rec.boot', JSON.stringify({ wire: true, rank: true, emb: EMB_N, keys: Object.keys(cache), at: Date.now() })); } catch (e) {}
+          try {
+            RANK = window.RecommendWire.create({
+              store: {
+                get: (k, d) => (Object.prototype.hasOwnProperty.call(cache, k) && cache[k] != null ? cache[k] : d),
+                set: (k, v) => { cache[k] = v; try { PlayerAPI.set(k, v); } catch (e) {} },
+              },
+            });
+          } catch (e) {
+            RANK = null;
+            try { PlayerAPI.set('measured.rec.boot', JSON.stringify({ wire: true, rank: false, err: String(e && e.message || e), at: Date.now() })); } catch (e2) {}
+          }
+        })
+        .catch((e) => {
+          RANK = null;
+          try { PlayerAPI.set('measured.rec.boot', JSON.stringify({ wire: true, rank: false, err: 'prefetch: ' + String(e && e.message || e), at: Date.now() })); } catch (e2) {}
+        });
+    }
+
+    /* The shelf talks to a licensed preview API through the shell (invoke on
+       desktop, fetch in the web build). Its Audio objects are what actually
+       buffers the 30 s clip; nothing is written to disk. */
+    if (window.MEASURED && MEASURED.Shelf) {
+      try {
+        SHELF = MEASURED.Shelf.create({
+          fetchJson: (u) => (PlayerAPI.searchOnline ? PlayerAPI.searchOnline(u) : fetch(u).then((r) => r.json())),
+          makeAudio: (src, id) => {
+            const a = new Audio();
+            a.preload = 'auto';
+            a.src = src;
+            a.addEventListener('canplaythrough', () => { try { SHELF.markReady(id, true); } catch (e) {} });
+            a.addEventListener('error', () => { try { SHELF.markReady(id, false); } catch (e) {} });
+            try { a.load(); } catch (e) {}
+            return a;
+          },
+        });
+      } catch (e) { SHELF = null; }
+    }
 
     // library median fingerprint (drawn as the reference spine)
     const withBands = TRACKS.filter((t) => t.bands && t.bands.length);
@@ -1487,6 +1618,21 @@ body.video-mode .hero{gap:0}
     if (startIdx < 0 || !VIEW[startIdx].lufs || !VIEW[startIdx].bands || !VIEW[startIdx].bands.length) {
       const full = VIEW.findIndex((t) => t.bands && t.bands.length && t.lufs);
       startIdx = full >= 0 ? full : 0;
+    }
+    if (keepPlayback && wasOnline) {
+      /* an online preview is playing: the download only adds to the library */
+      renderList();
+      return;
+    }
+    if (keepPlayback && prevFile) {
+      const idx = VIEW.findIndex(function (t) { return t.file === prevFile; });
+      if (idx >= 0) {
+        select(idx, false);
+        try { audio.currentTime = prevTime; } catch (e) {}
+        if (wasPlaying) { try { Promise.resolve(play()).catch(function () {}); } catch (e) {} }
+        loop();
+        return;
+      }
     }
     select(startIdx, false);
     loop();
@@ -1512,7 +1658,10 @@ body.video-mode .hero{gap:0}
     return !isStream(t);
   }
   function persistLikes() { try { PlayerAPI.set(LIKES_KEY, JSON.stringify(LIKE_MAP)); } catch (e) {} }
-  function setLiked(t, on) { LIKE_MAP[likeIdOf(t)] = !!on; persistLikes(); }
+  function setLiked(t, on) {
+    LIKE_MAP[likeIdOf(t)] = !!on; persistLikes();
+    if (on && RANK) { try { RANK.mark('like'); } catch (e) {} }
+  }
   let likeToastTimer = 0;
   function likeToast(msg) {
     let el = document.getElementById('like-toast');
@@ -1586,8 +1735,24 @@ body.video-mode .hero{gap:0}
   }
 
   let selToken = 0;
+  /* Set true only by the audio element's own 'ended' event: the one case where
+     switching away from a track is a finished listen rather than a skip. */
+  let naturalEnded = false;
   async function select(i, autoplay) {
     if (!VIEW[i]) return;
+    closeOnline();
+    /* Close the book on whatever was playing first. Elapsed comes off the audio
+       element, so a full play and an early skip take the same path — the learner
+       has to see both or it degenerates into on-policy learning. */
+    if (RANK && cur >= 0 && VIEW[cur] && curFile) {
+      const prevDur = audio.duration || VIEW[cur].dur || 0;
+      const el = audio.currentTime || 0;
+      const nat = naturalEnded;
+      naturalEnded = false;
+      /* The label comes from accumulated listened time inside the wire, so a
+         seek to the end can no longer read as a full listen. */
+      RANK.end(el, prevDur, undefined, { naturalEnd: nat });
+    }
     const mine = ++selToken;
     cur = i;
     const t = VIEW[i];
@@ -1600,6 +1765,7 @@ body.video-mode .hero{gap:0}
     const row = $('list').children[i];
     if (row) row.scrollIntoView({ block: 'nearest' });
     paint(t);
+    if (RANK) RANK.begin(t, rankLib());
     PlayerAPI.set(LS.track, t.file || String(i));
     announce('Now playing ' + (clean(t.title) || 'untitled') + ', by ' + (clean(t.artist) || 'unknown artist'));
     if ('mediaSession' in navigator) {
@@ -1740,6 +1906,7 @@ body.video-mode .hero{gap:0}
 
   audio.addEventListener('timeupdate', () => {
     const d = audio.duration || 0, c = audio.currentTime || 0;
+    if (RANK) { try { RANK.tick(c); } catch (e) {} }
     $('time').textContent = fmt(c) + ' / ' + fmt(d);
     const p = d ? (c / d) * 100 : 0;
     $('sfill').style.width = p + '%'; $('shead').style.left = p + '%';
@@ -1787,7 +1954,82 @@ body.video-mode .hero{gap:0}
     announce('This file could not be loaded' + (t && t.title ? ': ' + t.title : '') + '. It may have been moved or deleted.');
     playing = false; icon(false);
   });
-  audio.addEventListener('ended', () => { if (Date.now() - seekHold < 500) return; step(1); });
+  /* ------------------------------------------------------------ online shelf */
+
+  function shelfSeeds() {
+    try {
+      const st = window.RecommendFeatures.stats((RANK && RANK.events()) || [], TRACKS);
+      return SHELF.seedsFrom(st, 4);
+    } catch (e) { return []; }
+  }
+
+  /* Close the book on an online clip: the same 20% rule decides whether it is
+     ever offered again, and three listens in this sitting (or a like) is what
+     makes it worth keeping. */
+  function closeOnline(fromEnd) {
+    if (!ONLINE) return;
+    const c = ONLINE;
+    ONLINE = null;
+    if (!SHELF) return;
+    const dur = c.seconds || 30;
+    const heard = fromEnd ? dur : (audio.currentTime || 0);
+    try {
+      const g = SHELF.noteListen(c.id, heard, dur, false);
+      const verdict = SHELF.noteEnd(c.id, heard, dur);
+      if (g && g.ok) {
+        try { PlayerAPI.set('measured.shelf.want', JSON.stringify(SHELF.stats().downloads)); } catch (e) {}
+      }
+      if (verdict === 'ban' && SHELF.isBanned(c.id)) console.info('shelf: never again — ' + c.artist + ' · ' + c.title);
+    } catch (e) {}
+  }
+
+  async function playOnline(cand) {
+    ONLINE = cand;
+    cur = -1;
+    curFile = '';
+    [...$('list').children].forEach((el) => { el.classList.remove('on'); el.setAttribute('aria-selected', 'false'); });
+    paint({
+      file: 'online:' + cand.id, title: cand.title, artist: cand.artist, album: cand.album,
+      cover: cand.art || '', bands: [], codec: 'AAC', dur: cand.seconds || 30, ext: 'm4a',
+    });
+    announce('Online preview: ' + (clean(cand.title) || 'untitled'));
+    try { audio.src = cand.url; await audio.play(); } catch (e) { announce('That preview would not play.'); }
+  }
+
+  /* The local pool is spent: buffer a clip from the shelf and stream it. */
+  async function onlineNext(depth) {
+    depth = depth || 0;
+    if (!SHELF) { step(1); return; }
+    let cand = SHELF.next();
+    if (!cand) {
+      try { await SHELF.refill(shelfSeeds()); } catch (e) {}
+      for (let i = 0; i < 24 && !cand; i++) {
+        await new Promise((r) => setTimeout(r, 250));
+        cand = SHELF.next();
+      }
+    }
+    if (cand) { await playOnline(cand); return; }
+    if (depth < 2) { await onlineNext(depth + 1); return; }
+    announce('Nothing left to play.');
+    step(1);
+  }
+
+  /* A finished track: ask the ranker where to go. It refuses (returns null) on a
+     library it has not been told enough about yet, and the player keeps its
+     sequential behaviour in that case. */
+  audio.addEventListener('ended', () => {
+    if (Date.now() - seekHold < 500) return;
+    if (ONLINE) { closeOnline(true); onlineNext(0); return; }
+    naturalEnded = true;
+    let pick = null;
+    try { pick = RANK ? RANK.nextIndex(rankLib()) : null; } catch (e) { pick = null; }
+    if (Number.isInteger(pick) && VIEW[pick] && pick !== cur) { select(pick, true); return; }
+    /* Nothing local left worth playing: go online rather than loop the same
+       file forever. */
+    onlineNext(0);
+  });
+
+  window.addEventListener('beforeunload', () => { if (RANK) { try { RANK.save(); } catch (e) {} } });
 
   function bindDrag(el, set) {
     let on = false;
@@ -2580,7 +2822,7 @@ function row(v, sub) {
       const file = await PlayerAPI.download(v);
       ht.dataset.busy = '0';
       likeToast(file ? 'Saved to your library' : 'Liked');
-      if (file) { await boot(); }
+      if (file) { await boot({ keep: true }); }
     } catch (err) {
       ht.dataset.busy = '0';
       likeToast('Saved the like, download failed');
@@ -2792,7 +3034,233 @@ window.__ytSearch = search;
     box.textContent = 'Library failed to load. ' + ((e && e.message) || 'Unknown error');
     document.body.appendChild(box);
   });
+/* ---- Up next: ranker top-N + web suggestions (nothing is indexed) ---- */
+(function upNext() {
+  try {
+    const tabLib = document.getElementById('tab-lib');
+    const tabYt = document.getElementById('tab-yt');
+    const tabUp = document.getElementById('tab-up');
+    const pane = document.getElementById('up-pane');
+    const listEl = document.getElementById('list');
+    const ytPane = document.getElementById('yt-pane');
+    const localEl = document.getElementById('up-local');
+    const webEl = document.getElementById('up-web');
+    if (!tabUp || !pane || !localEl || !webEl) return;
+
+    let webSeq = 0;
+
+    function paintTabs(which) {
+      [['lib', tabLib], ['yt', tabYt], ['up', tabUp]].forEach(function (pair) {
+        const key = pair[0], el = pair[1];
+        if (!el) return;
+        const on = key === which;
+        el.classList.toggle('is-on', on);
+        el.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      if (listEl) listEl.hidden = which !== 'lib';
+      if (ytPane) ytPane.hidden = which !== 'yt';
+      pane.hidden = which !== 'up';
+      if (which === 'up') refresh();
+    }
+
+    function localRow(r) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'up-row';
+      b.innerHTML = '<span class="up-i"><b></b><i></i></span><span class="up-bar"><span></span></span>';
+      b.querySelector('b').textContent = (typeof clean === 'function' ? clean(r.title) : r.title) || '(untitled)';
+      b.querySelector('i').textContent = r.artist || '';
+      const frac = r.score ? Math.min(1, Math.max(0.06, (r.score + 1.6) / 3.2)) : 0;
+      b.querySelector('.up-bar span').style.width = (frac * 100).toFixed(0) + '%';
+      b.title = 'Score ' + (r.score ? r.score.toFixed(2) : '—') + (r.cold ? ' (cold start order)' : '');
+      b.addEventListener('click', function () { try { select(r.index, true); } catch (e) {} });
+      return b;
+    }
+
+    let upErr = '';
+    let webSeen = {}, webSeedTerm = '', webHasRows = false;
+    const WEB_N = 9, WEB_FROM_PICK = 5, WEB_FROM_DEFAULT = 6;
+
+    function renderLocal() {
+      localEl.textContent = '';
+      let rows = [];
+      upErr = '';
+      try {
+        const wantRows = webHasRows ? 4 : 8;
+        if (typeof RANK !== 'undefined' && RANK && typeof RANK.rank === 'function' && typeof rankLib === 'function') rows = RANK.rank(rankLib(), wantRows);
+      } catch (e) { rows = []; upErr = String((e && e.message) || e); }
+      if (!rows.length) {
+        const msg = document.createElement('div');
+        msg.className = 'up-empty';
+        msg.textContent = upErr ? ('Ranker error: ' + upErr) : 'Not enough listening yet — this fills in as plays accumulate.';
+        localEl.appendChild(msg);
+        return;
+      }
+      rows.forEach(function (r) { localEl.appendChild(localRow(r)); });
+    }
+
+    function webTermOf(cand) {
+      const c = cand || {};
+      const a = String(c.artist || '').trim();
+      if (a && !/^unknown/i.test(a) && a.length <= 42 && /[a-z]{2,}/i.test(a)) return a;
+      const t = String(c.title || '').split(/[|\uFF5C]/)[0].trim();
+      return t.length <= 42 ? t : '';
+    }
+    function webRow(cand) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'up-row';
+      const secs = Number(cand.seconds) || 0;
+      const tag = secs ? (Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0')) : 'YT';
+      b.innerHTML = '<span class="up-i"><b></b><i></i></span><span class="up-tag"></span>';
+      b.querySelector('b').textContent = cand.title || '(untitled)';
+      b.querySelector('i').textContent = cand.artist || '';
+      b.querySelector('.up-tag').textContent = tag;
+      b.addEventListener('click', function () {
+        /* clicking a pick teaches the pane: it becomes the next seed and the
+           list regenerates around it (the clip keeps playing). */
+        webSeedTerm = webTermOf(cand) || webSeedTerm;
+        webHasRows = true;
+        try {
+          if (cand.ytId) playAudio({ id: cand.ytId, title: cand.title, author: cand.artist, seconds: cand.seconds, thumb: cand.thumb, views: '' });
+          else playOnline(cand);
+        } catch (e) {}
+        paintTabs('up');
+        renderWeb().then(function () { renderLocal(); });
+      });
+      return b;
+    }
+    function renderWeb() {
+      const seq = ++webSeq;
+      webEl.textContent = '';
+      const note = document.createElement('div');
+      note.className = 'up-empty';
+      note.textContent = 'Looking for something new\u2026';
+      webEl.appendChild(note);
+
+      if (!PlayerAPI || typeof PlayerAPI.ytSearch !== 'function') {
+        note.textContent = 'Web suggestions need the desktop shell.';
+        return Promise.resolve();
+      }
+      function webSearch(term, limit) {
+        return PlayerAPI.ytSearch(term, limit || 12).then(function (list) {
+          return (list || []).map(function (v) {
+            return { id: 'yt:' + v.id, ytId: v.id, title: v.title, artist: v.author, seconds: v.seconds, thumb: v.thumb };
+          }).filter(function (c) { return c.title; });
+        }).catch(function () { return []; });
+      }
+      function seedOk(x) {
+        const v = String(x == null ? '' : x).trim();
+        if (v.length < 3 || v.length > 42) return '';
+        if (/^unknown/i.test(v)) return '';
+        if (/[|\uFF5C]/.test(v)) return '';
+        if (!/[a-z]{2,}/i.test(v)) return '';
+        if (/^[\d\s._|\-\/]+$/.test(v)) return '';
+        if (/\d{4,}/.test(v)) return '';
+        return v;
+      }
+      function pipeHead(t) {
+        const parts = String(t || '').split(/[|\uFF5C]/);
+        return parts.length > 1 ? parts[0].trim() : '';
+      }
+      function cleanTitle(t) {
+        return String(t || '')
+          .replace(/\([^)]*\)|\[[^\]]*\]|\{[^}]*\}/g, ' ')
+          .replace(/\b(official|lyric|lyrics|audio|video|visuali[sz]er|hd|4k|mv|m\/v)\b/ig, ' ')
+          .replace(/[\u2013\u2014]/g, ' - ')
+          .replace(/\s+/g, ' ')
+          .replace(/^[-\s|]+|[-\s|]+$/g, '')
+          .trim();
+      }
+      const pickedSeed = seedOk(webSeedTerm);
+      const want = pickedSeed ? WEB_N : WEB_FROM_DEFAULT;
+      const defaults = [];
+      function addDefault(t) { const v = seedOk(t); if (v && defaults.indexOf(v) < 0) defaults.push(v); }
+      const c0 = (VIEW && VIEW[cur]) || null;
+      if (c0) { addDefault(pipeHead(c0.title)); addDefault(c0.artist); const t = cleanTitle(c0.title); if (t && !/[|\uFF5C]/.test(t)) addDefault(t); }
+      if (defaults.length < 2) {
+        try { (SHELF.seedsFrom((typeof STATS === 'object' && STATS) || {}, 8) || []).map(pipeHead).forEach(addDefault); } catch (e) {}
+      }
+      if (!pickedSeed && !defaults.length) defaults.push('top hits');
+
+      const seen = { };
+      const out = [];
+      function take(list, cap, fromPick) {
+        let n = 0;
+        (list || []).some(function (cand) {
+          if (n >= cap) return true;
+          if (!cand || !cand.id || seen[cand.id] || webSeen[cand.id]) return false;
+          seen[cand.id] = 1; webSeen[cand.id] = 1;
+          cand.fromPick = !!fromPick;
+          out.push(cand); n++;
+          return false;
+        });
+        return n;
+      }
+      let chain = Promise.resolve();
+      if (pickedSeed) {
+        chain = chain.then(function () {
+          return webSearch(pickedSeed, 14).then(function (l) { take(l, WEB_FROM_PICK, true); return null; }).catch(function () { return null; });
+        });
+      }
+      defaults.forEach(function (seed, i) {
+        chain = chain.then(function () {
+          if (out.length >= want) return null;
+          const cap = Math.max(1, Math.ceil(WEB_FROM_DEFAULT / Math.min(3, defaults.length)));
+          return webSearch(seed, 14).then(function (l) { take(l, cap, false); return null; }).catch(function () { return null; });
+        });
+        if (i >= 2) return;
+      });
+      note.textContent = 'Looking near ' + (pickedSeed ? pickedSeed : defaults.join(' \u00b7 ')) + '\u2026';
+
+      return chain.then(function () {
+        if (out.length < want) {
+          const top = pickedSeed || defaults[0] || 'top hits';
+          return webSearch(top, 25).then(function (l) { take(l, want - out.length, false); return null; }).catch(function () { return null; });
+        }
+        return null;
+      }).then(function () {
+        if (seq !== webSeq) return;
+        if (seq !== webSeq) return;
+        out.length = Math.min(out.length, want);
+        const had = webHasRows;
+        webHasRows = out.length > 0;
+        webEl.textContent = '';
+        if (!out.length) {
+          const none = document.createElement('div');
+          none.className = 'up-empty';
+          none.textContent = 'Nothing came back \u2014 the YouTube search may be offline.';
+          webEl.appendChild(none);
+        } else {
+          out.forEach(function (c) { webEl.appendChild(webRow(c)); });
+        }
+        if (had !== webHasRows && typeof renderLocal === 'function') renderLocal();
+      }).catch(function (err) {
+        if (seq !== webSeq) return;
+        webEl.textContent = '';
+        const bad = document.createElement('div');
+        bad.className = 'up-empty';
+        bad.textContent = 'Search failed: ' + ((err && err.message) || err || 'unknown');
+        webEl.appendChild(bad);
+      });
+    }
+
+    function refresh() { renderLocal(); renderWeb(); }
+
+    tabUp.addEventListener('click', function () { paintTabs('up'); });
+    if (tabLib) tabLib.addEventListener('click', function () { paintTabs('lib'); });
+    if (tabYt) tabYt.addEventListener('click', function () {
+      if (pane) pane.hidden = true;
+      if (tabUp) tabUp.classList.remove('is-on');
+    });
+
+    const audioEl = document.getElementById('audio') || document.querySelector('audio');
+    if (audioEl) audioEl.addEventListener('ended', function () { if (pane && !pane.hidden) renderLocal(); });
+  } catch (e) { /* the panel is optional: never break the player for it */ }
 })();
+
+})();
+
 </script>
 <script src="deck/vinyl.js"></script>
 

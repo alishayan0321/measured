@@ -411,6 +411,21 @@ fn platform() -> &'static str {
     "desktop"
 }
 
+/// Online shelf: fetch a licensed preview query from the Rust side so the WebView
+/// never needs CORS headers or a relaxed CSP. Only the iTunes search endpoint is
+/// ever contacted, and the page builds the URL.
+#[tauri::command]
+async fn shelf_search(url: String) -> Result<String, String> {
+    if !url.starts_with("https://itunes.apple.com/search?") {
+        return Err("blocked: not a shelf query".into());
+    }
+    let res = reqwest::get(&url).await.map_err(|e| e.to_string())?;
+    if !res.status().is_success() {
+        return Err(format!("search failed: {}", res.status()));
+    }
+    res.text().await.map_err(|e| e.to_string())
+}
+
 // ---------------------------------------------------------------- boot
 
 #[derive(Deserialize)]
@@ -442,6 +457,7 @@ fn main() {
             pick_songs,
             remove_added,
             clear_added,
+            shelf_search,
             get,
             set,
             set_theme,

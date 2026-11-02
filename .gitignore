@@ -63,3 +63,8 @@ android/_d8test/
 
 rust/qa/
 
+
+# generated training artefacts
+train/
+*.blob.json
+

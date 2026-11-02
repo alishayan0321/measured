@@ -4,7 +4,7 @@ Local music player � one library, three shells: browser, Windows (Tauri + Rust
 
 ## Download
 
-Everything is on the release page: **https://github.com/alishayan0321/measured/releases/latest**
+Everything is on the release page: the **Releases** page of this repository
 
 | File | What it is |
 |---|---|

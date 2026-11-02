@@ -312,6 +312,21 @@ const api = {
     /** Called from native after an import finished. */
     onSongsChanged() { emit(); return 1; },
 
+    /** Online shelf: search a licensed preview catalogue (iTunes' 30 s clips).
+        Desktop goes through the Rust core so the WebView never needs CORS or a
+        relaxed CSP; the web/dev shell can fetch directly. Returns the parsed
+        JSON, or an empty result set when the request fails. */
+    async searchOnline(url) {
+      if (!/^https:\/\/itunes\.apple\.com\/search\?/.test(String(url || ''))) {
+        throw new Error('searchOnline: only the itunes search endpoint is allowed');
+      }
+      if (tauri) {
+        try { const txt = await invoke('shelf_search', { url }); return JSON.parse(txt); }
+        catch (e) { return { results: [] }; }
+      }
+      try { const r = await fetch(url); return await r.json(); } catch (e) { return { results: [] }; }
+    },
+
     normKey,
   };
 
