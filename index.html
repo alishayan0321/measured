@@ -1310,6 +1310,31 @@ body.video-mode .hero{gap:0}
       <p class="note" id="act-note"></p>
     </section>
 
+    <section class="sheet-s" id="sec-eq">
+      <div class="lab">Equaliser</div>
+      <div class="eq-head">
+        <label class="eq-toggle"><input type="checkbox" id="eq-on"> <span>Enable</span></label>
+        <select id="eq-preset" aria-label="Equaliser preset">
+          <option value="">Preset…</option>
+          <option>Flat</option>
+          <option>Bass boost</option>
+          <option>Vocal</option>
+          <option>Rock</option>
+          <option>Pop</option>
+          <option>Electronic</option>
+          <option>Late night</option>
+        </select>
+        <span class="eq-read" id="eq-read">Off</span>
+      </div>
+      <div class="eq-bands">
+        <label class="eq-band"><input type="range" id="eq-b0" min="-12" max="12" step="1" value="0" aria-label="60 Hz"><span>60</span></label>
+        <label class="eq-band"><input type="range" id="eq-b1" min="-12" max="12" step="1" value="0" aria-label="230 Hz"><span>230</span></label>
+        <label class="eq-band"><input type="range" id="eq-b2" min="-12" max="12" step="1" value="0" aria-label="910 Hz"><span>910</span></label>
+        <label class="eq-band"><input type="range" id="eq-b3" min="-12" max="12" step="1" value="0" aria-label="3.6 kHz"><span>3.6k</span></label>
+        <label class="eq-band"><input type="range" id="eq-b4" min="-12" max="12" step="1" value="0" aria-label="14 kHz"><span>14k</span></label>
+      </div>
+    </section>
+
     <section class="sheet-s" id="sec-storage" hidden>
       <div class="lab">Storage</div>
       <div class="bar"><i id="st-bar"></i></div>
@@ -1371,6 +1396,119 @@ body.video-mode .hero{gap:0}
   'use strict';
   const $ = (id) => document.getElementById(id);
   const audio = $('audio');
+  audio.crossOrigin = 'anonymous';   // the proxy answers with ACAO, so this is clean
+
+  /* Every remote or asset URL goes through the loopback proxy: it re-serves the
+     bytes with CORS headers (and speaks googlevideo's bounded-range dialect), so
+     the element stays readable by Web Audio. Empty PROXY = direct playback. */
+  let PROXY = '';
+  const proxied = (url, total) => {
+    if (!url || !PROXY || String(url).startsWith(PROXY)) return url;
+    return PROXY + '/u?u=' + encodeURIComponent(url) + (total ? '&n=' + total : '');
+  };
+
+  /* ---- equaliser ---------------------------------------------------------
+     Web Audio can only read a source it is allowed to touch, and both of ours
+     are cross-origin (the asset protocol and googlevideo). The Rust side runs a
+     loopback proxy that re-serves either one with CORS headers, so the audible
+     element becomes same-origin and a real filter chain is possible. One chain:
+     element -> preamp -> five peaking bands -> analyser -> speakers. Bands sit at
+     0 dB by default, so with the EQ off the sound is unchanged. */
+  const EQ_BANDS = [60, 230, 910, 3600, 14000];
+  const EQ_PRESETS = {
+    Flat: [0, 0, 0, 0, 0],
+    'Bass boost': [7, 5, 1, 0, 0],
+    Vocal: [-2, 0, 3, 4, 1],
+    Rock: [5, 2, -1, 3, 5],
+    Pop: [-1, 2, 4, 2, -1],
+    Electronic: [6, 3, 0, 2, 5],
+    'Late night': [-3, -1, 2, 1, -2],
+  };
+  let eqCtx = null, eqPre = null, eqBands = [], eqOn = false, eqGains = EQ_BANDS.map(() => 0);
+
+  function eqLoad() {
+    try {
+      const raw = JSON.parse(localStorage.getItem('measured.eq') || '{}');
+      if (Array.isArray(raw.gains) && raw.gains.length === EQ_BANDS.length) eqGains = raw.gains.map(Number);
+      eqOn = !!raw.on;
+    } catch (e) { /* first run */ }
+  }
+  function eqSave() {
+    try { localStorage.setItem('measured.eq', JSON.stringify({ on: eqOn, gains: eqGains })); } catch (e) {}
+  }
+  function eqBuild() {
+    if (eqCtx) return true;
+    if (!PROXY) return false;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      eqCtx = new AC();
+      const src = eqCtx.createMediaElementSource(audio);
+      eqPre = eqCtx.createGain();
+      eqPre.gain.value = 1;
+      src.connect(eqPre);
+      let node = eqPre;
+      eqBands = EQ_BANDS.map((f) => {
+        const b = eqCtx.createBiquadFilter();
+        b.type = 'peaking';
+        b.frequency.value = f;
+        b.Q.value = 1.1;
+        b.gain.value = 0;
+        node.connect(b);
+        node = b;
+        return b;
+      });
+      const an = eqCtx.createAnalyser();
+      an.fftSize = 4096;
+      an.smoothingTimeConstant = 0.82;
+      node.connect(an);
+      an.connect(eqCtx.destination);
+      analyser = an;                       // the visualiser now reads the real output
+      freq = new Uint8Array(an.frequencyBinCount);
+      return true;
+    } catch (e) { eqCtx = null; return false; }
+  }
+  function eqApply() {
+    if (!eqBuild()) return;
+    if (eqCtx.state === 'suspended') eqCtx.resume().catch(() => {});
+    eqBands.forEach((b, i) => { b.gain.value = eqOn ? eqGains[i] : 0; });
+  }
+
+  (function eqWire() {
+    const on = document.getElementById('eq-on');
+    const sel = document.getElementById('eq-preset');
+    const read = document.getElementById('eq-read');
+    const sliders = EQ_BANDS.map((_, i) => document.getElementById('eq-b' + i));
+    const paint = () => {
+      sliders.forEach((s, i) => { if (s) s.value = String(eqGains[i]); });
+      if (read) read.textContent = eqOn ? 'On' : 'Off';
+      if (on) on.checked = eqOn;
+    };
+    sliders.forEach((s, i) => {
+      if (!s) return;
+      s.addEventListener('input', () => {
+        eqGains[i] = Number(s.value);
+        eqOn = true;
+        eqApply(); eqSave(); paint();
+      });
+    });
+    if (sel) sel.addEventListener('change', () => {
+      const p = EQ_PRESETS[sel.value];
+      if (!p) return;
+      eqGains = p.slice();
+      eqOn = true;
+      eqApply(); eqSave(); paint();
+    });
+    if (on) on.addEventListener('change', () => { eqOn = on.checked; eqApply(); eqSave(); paint(); });
+    eqLoad(); paint();
+    audio.addEventListener('play', () => eqApply());
+
+
+
+
+
+
+  })();
+
   const cv = $('scope');
   const g = cv.getContext('2d');
   const LS = { vol: 'measured.vol', track: 'measured.file' };
@@ -1507,6 +1645,7 @@ body.video-mode .hero{gap:0}
   }
 
   async function boot(opts) {
+    try { PROXY = (await PlayerAPI.proxyBase()) || ''; } catch (e) { PROXY = ''; }
     const keepPlayback = !!(opts && opts.keep);
     const prevFile = (cur >= 0 && VIEW[cur] && VIEW[cur].file) ? VIEW[cur].file : null;
     const prevTime = (audio && audio.currentTime) || 0;
@@ -1651,7 +1790,7 @@ body.video-mode .hero{gap:0}
     if (t.videoId && !t.file) return 'yt:' + t.videoId;
     return 'file:' + (t.file || t.videoId || '');
   }
-  /* every local file starts liked (it is ali's own library); streams start unliked */
+  /* every local file starts liked (they are the user's own files); streams start unliked */
   function isLiked(t) {
     const id = likeIdOf(t);
     if (Object.prototype.hasOwnProperty.call(LIKE_MAP, id)) return !!LIKE_MAP[id];
@@ -1791,7 +1930,7 @@ body.video-mode .hero{gap:0}
     } else {
       lastNativeFile = t.file || '';      /* native extension, codec still unproven */
     }
-    audio.src = url; audio.load();
+    audio.src = proxied(url); audio.load();
     if (String(url).indexOf('asset.localhost') !== -1) tapSource(url); else tapStop();
     if (autoplay) play(); else icon(false);
   }
@@ -1942,7 +2081,7 @@ body.video-mode .hero{gap:0}
         const wav = await PlayerAPI.prepareForce(t);
         if (wav) {
           const resume = playing || !audio.paused;
-          audio.src = wav; audio.load();
+          audio.src = proxied(wav); audio.load();
           tapSource(wav);
           if (resume) play();
           announce('Converted ' + (clean(t.title) || 'this track') + ' to play it.');
@@ -1993,7 +2132,7 @@ body.video-mode .hero{gap:0}
       cover: cand.art || '', bands: [], codec: 'AAC', dur: cand.seconds || 30, ext: 'm4a',
     });
     announce('Online preview: ' + (clean(cand.title) || 'untitled'));
-    try { audio.src = cand.url; await audio.play(); } catch (e) { announce('That preview would not play.'); }
+    try { audio.src = proxied(cand.url); await audio.play(); } catch (e) { announce('That preview would not play.'); }
   }
 
   /* The local pool is spent: buffer a clip from the shelf and stream it. */
@@ -2676,7 +2815,7 @@ async function playAudio(v) {
         link = (again && again.url) ? again.url : (typeof again === 'string' ? again : url);
       }
       if (gen !== ytGen) return false;
-      audio.src = link;
+      audio.src = proxied(link, res && res.contentLength);
       audio.load();
       playing = true;
       const started = audio.play().catch(() => {});   // start now, not after the wait
@@ -3598,7 +3737,7 @@ html[data-theme="liquid"] .stage{ border-radius:14px !important; }
 html[data-theme="liquid"] .readout .cell{ -webkit-backdrop-filter:none !important; backdrop-filter:none !important; }
 </style><style>
 /* ── LIQUID GLASS, cream revision ─────────────────────────────────────────────
-   Ali: keep the cream. Agreed, and it is the more honest reading of the
+   Keep the cream. It is the more honest reading of the
    guidance: the material does not need a rainbow to refract — it needs real,
    slightly uneven light behind it and a crisp edge. So the backdrop stays the
    app's own paper, the blue colour field is gone, and the "liquid" quality now
@@ -3809,7 +3948,7 @@ html.no-blur[data-theme="liquid"] .deck::after{ opacity:.16; filter:blur(20px) s
 html.no-blur[data-theme="liquid"] .np::after{ opacity:.12; filter:blur(16px) saturate(.8); }
 </style><style>
 /* ── flicker fix, all platforms ───────────────────────────────────────────────
-   Ali sees the page flicker on desktop as well, so the cause is not WebView:
+   The page flickers on desktop as well, so the cause is not WebView:
    Chromium is re-sampling a stack of backdrop-filters (panes inside panes) while
    a fixed, blurred wash sits behind them, and composited layers drop out between
    frames. On a flat cream backdrop that blur was buying almost nothing anyway —
@@ -3902,7 +4041,16 @@ html[data-theme="liquid"] body::after{ opacity:.055 !important; }
     height: min(62vw, 206px) !important;
   }
 }
-</style></body>
+</style><style>
+.eq-head{display:flex;align-items:center;gap:10px;margin:10px 0 14px}
+.eq-toggle{display:flex;align-items:center;gap:6px;font-size:12px;opacity:.85}
+#eq-preset{background:transparent;border:1px solid var(--hair);color:inherit;border-radius:8px;padding:4px 8px;font-size:12px}
+.eq-read{font-size:11px;opacity:.6;margin-left:auto}
+.eq-bands{display:flex;gap:8px;align-items:flex-end;justify-content:space-between}
+.eq-band{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:10px;opacity:.75}
+.eq-band input[type=range]{writing-mode:vertical-lr;direction:rtl;width:22px;height:96px;accent-color:currentColor}
+</style>
+</body>
 </html>
 
 <script>/* __likesInstalled */</script>

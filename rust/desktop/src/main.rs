@@ -22,6 +22,7 @@ use tauri::{AppHandle, Manager, Theme};
 use measured_core as core;
 
 mod net;
+mod proxy;
 
 #[derive(Debug, Clone, Serialize)]
 struct TrackOut {
@@ -434,10 +435,19 @@ struct PriorSettings {
     theme: Option<String>,
 }
 
+static PROXY_BASE: OnceLock<String> = OnceLock::new();
+
+/// Base URL of the loopback audio proxy (empty string if it could not start).
+#[tauri::command]
+fn proxy_base() -> String {
+    PROXY_BASE.get().cloned().unwrap_or_default()
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            PROXY_BASE.get_or_init(proxy::start);
             let handle = app.handle().clone();
             load_settings(&handle);
             let prior: PriorSettings =
@@ -463,7 +473,9 @@ fn main() {
             set_theme,
             version,
             platform,
+            proxy_base,
             net::yt_search,
+            net::yt_resolve,
             net::yt_audio,
         net::yt_download
         ])

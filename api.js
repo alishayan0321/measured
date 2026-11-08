@@ -157,6 +157,13 @@ const api = {
     return null;
   },
 
+  // Desktop only: the loopback proxy that re-serves audio with CORS headers, so
+  // Web Audio may read it. Empty string when the platform has no proxy.
+  async proxyBase() {
+    if (tauri) { try { return (await invoke('proxy_base')) || ''; } catch (e) { return ''; } }
+    return '';
+  },
+
   // Called by the Android side when a bridge job finishes.
   ytDone(token, ok, payload) {
     const p = YT_PENDING.get(token);

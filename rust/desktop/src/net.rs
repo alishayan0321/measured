@@ -156,10 +156,170 @@ pub async fn yt_search(query: String, limit: Option<usize>) -> Result<Vec<Video>
 }
 
 // ------------------------------------------------------------------ audio
-// Audio-first playback. The video path stays with the official IFrame player
-// (nothing downloaded, no stream extraction), but an audio-only session needs
-// a real audio URL, so that single case shells out to yt-dlp and hands the
-// temporary googlevideo URL to the page's <audio> element.
+// Audio-first playback. The video path stays with the official IFrame player,
+// but an audio-only session needs a real audio URL.
+//
+// Resolution order, cheapest first:
+//   1. the YouTube Music InnerTube player endpoint (one POST, ~150 ms, no
+//      binary involved) — same route SimpMusic's StreamRepository takes;
+//   2. yt-dlp, which can sign what InnerTube hands back ciphered.
+// The returned googlevideo URL carries `cpn` and `range=0-<length>` so the
+// whole song streams in one connection, and it expires — callers must not
+// cache it past `expires_in`.
+
+const PLAYER_URL: &str =
+    "https://music.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8";
+const UA_IOS: &str = "com.google.ios.youtube/20.10.4 (iPhone16,3; U; CPU iOS 18_3_2 like Mac OS X)";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolvedAudio {
+    pub url: String,
+    pub itag: i64,
+    pub mime: String,
+    pub bitrate: i64,
+    pub expires_in: i64,
+    pub content_length: Option<i64>,
+    pub length_seconds: Option<i64>,
+    pub via: String,
+}
+
+/// 16-char client playback nonce (the `cpn` InnerTube expects).
+fn cpn() -> String {
+    const A: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_";
+    let mut seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0)
+        ^ (std::process::id() as u64).rotate_left(17);
+    let mut out = String::with_capacity(16);
+    for _ in 0..16 {
+        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        out.push(A[(seed >> 33) as usize % A.len()] as char);
+    }
+    out
+}
+
+fn audio_rank(itag: i64) -> i32 {
+    match itag {
+        251 => 0, // Opus 160 kbps
+        141 => 1, // AAC 256
+        140 => 2, // AAC 128
+        250 => 3, // Opus 70
+        249 => 4, // Opus 50
+        774 => 8, // Opus 256, usually ciphered — only as a last resort
+        _ => 9,
+    }
+}
+
+fn pick_audio(json: &Value) -> Option<ResolvedAudio> {
+    let sd = json.get("streamingData")?;
+    let mut best: Option<(i32, ResolvedAudio)> = None;
+
+    for key in ["adaptiveFormats", "formats"] {
+        let Some(list) = sd.get(key).and_then(|v| v.as_array()) else { continue };
+        for f in list {
+            let Some(url) = f.get("url").and_then(|v| v.as_str()).filter(|u| u.starts_with("http")) else { continue };
+            let mime = f.get("mimeType").and_then(|v| v.as_str()).unwrap_or("");
+            if !mime.starts_with("audio/") && key == "adaptiveFormats" {
+                continue;
+            }
+            if !mime.starts_with("audio/") {
+                continue;
+            }
+            let itag = f.get("itag").and_then(|v| v.as_i64()).unwrap_or(0);
+            let rank = audio_rank(itag);
+            let cand = ResolvedAudio {
+                url: url.to_string(),
+                itag,
+                mime: mime.to_string(),
+                bitrate: f.get("bitrate").and_then(|v| v.as_i64()).unwrap_or(0),
+                expires_in: sd.get("expiresInSeconds").and_then(|v| v.as_str().and_then(|s| s.parse::<i64>().ok())).unwrap_or(0),
+                content_length: f.get("contentLength").and_then(|v| v.as_str().and_then(|s| s.parse::<i64>().ok())),
+                length_seconds: json
+                    .get("videoDetails")
+                    .and_then(|v| v.get("lengthSeconds"))
+                    .and_then(|v| v.as_str().and_then(|s| s.parse::<i64>().ok())),
+                via: "innertube".to_string(),
+            };
+            if best.as_ref().map(|(r, _)| rank < *r).unwrap_or(true) {
+                best = Some((rank, cand));
+            }
+        }
+    }
+    best.map(|(_, c)| c)
+}
+
+/// Ask the InnerTube player endpoint for a playable audio URL.
+pub async fn resolve_audio(id: &str) -> Result<ResolvedAudio, String> {
+    let body = serde_json::json!({
+        "context": {
+            "client": {
+                "clientName": "IOS",
+                "clientVersion": "20.10.4",
+                "deviceModel": "iPhone16,3",
+                "osName": "iPhone",
+                "osVersion": "18.3.2.22D82",
+                "hl": "en",
+                "gl": "US"
+            }
+        },
+        "videoId": id,
+        "contentCheckOk": true,
+        "racyCheckOk": true
+    });
+
+    let client = reqwest::Client::builder()
+        .user_agent(UA_IOS)
+        .timeout(std::time::Duration::from_secs(12))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let resp = client
+        .post(PLAYER_URL)
+        .header("Content-Type", "application/json")
+        .header("Origin", "https://music.youtube.com")
+        .header("Referer", "https://music.youtube.com/")
+        .header("Accept-Language", "en-US,en;q=0.9")
+        .body(body.to_string())
+        .send()
+        .await
+        .map_err(|e| format!("player failed: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("player HTTP {}", resp.status()));
+    }
+    let json: Value = resp.json().await.map_err(|e| format!("bad json: {e}"))?;
+
+    if let Some(status) = json.get("playabilityStatus").and_then(|s| s.get("status")).and_then(|s| s.as_str()) {
+        if status != "OK" {
+            let why = json
+                .get("playabilityStatus")
+                .and_then(|s| s.get("reason"))
+                .and_then(|s| s.as_str())
+                .unwrap_or(status);
+            return Err(format!("not playable: {why}"));
+        }
+    }
+
+    let mut out = pick_audio(&json).ok_or_else(|| "no audio format with a URL (ciphered)".to_string())?;
+    let len = out.content_length.unwrap_or(10_000_000);
+    let sep = "&";
+    out.url = format!("{}{}cpn={}&range=0-{}", out.url, sep, cpn(), len);
+    Ok(out)
+}
+
+#[tauri::command]
+pub async fn yt_resolve(id: String) -> Result<ResolvedAudio, String> {
+    check_id(&id)?;
+    resolve_audio(&id).await
+}
+
+fn check_id(id: &str) -> Result<(), String> {
+    if id.len() != 11 || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+        return Err("bad video id".into());
+    }
+    Ok(())
+}
 
 fn ytdlp_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
     use tauri::Manager;
@@ -183,10 +343,15 @@ fn ytdlp_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
 }
 
 #[tauri::command]
-pub fn yt_audio(app: tauri::AppHandle, id: String) -> Result<String, String> {
-    if id.len() != 11 || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
-        return Err("bad video id".into());
+pub async fn yt_audio(app: tauri::AppHandle, id: String) -> Result<String, String> {
+    check_id(&id)?;
+
+    // Fast path: InnerTube hands back a direct googlevideo URL for most tracks.
+    match resolve_audio(&id).await {
+        Ok(r) => return Ok(r.url),
+        Err(_) => { /* fall through to yt-dlp, which can sign ciphered formats */ }
     }
+
     let exe = ytdlp_path(&app).ok_or_else(|| "yt-dlp.exe is missing".to_string())?;
 
     let mut cmd = std::process::Command::new(exe);
