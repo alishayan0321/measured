@@ -43,7 +43,7 @@ fn platform_config(app: &AppHandle) -> PlatformConfig<'static> {
     // the player at all, so a missing handle is reported as `None` and `new`
     // fails cleanly rather than panicking.
     let hwnd = app
-        .get_window("main")
+        .get_webview_window("main")
         .and_then(|w| w.window_handle().ok())
         .and_then(|h| match h.as_raw() {
             RawWindowHandle::Win32(w) => Some(w.hwnd.get() as *mut std::ffi::c_void),
