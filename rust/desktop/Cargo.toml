@@ -3,7 +3,7 @@ name = "measured-desktop"
 version = "2.0.0"
 edition = "2021"
 description = "MEASURED - a local music player that cannot phone home"
-authors = ["Ali"]
+authors = ["MEASURED"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

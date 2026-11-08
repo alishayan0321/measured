@@ -29,11 +29,11 @@ if (viList.length) {
   vi.setFileVersion(1, 0, 0, 0, lang);
   vi.setProductVersion(1, 0, 0, 0, lang);
   vi.setStringValues({ lang, codepage: 1200 }, {
-    CompanyName: 'Ali',
+    CompanyName: 'MEASURED',
     FileDescription: 'MEASURED — local music library',
     FileVersion: '1.0.0',
     InternalName: 'MEASURED',
-    LegalCopyright: 'Ali',
+    LegalCopyright: 'MEASURED',
     OriginalFilename: 'MEASURED.exe',
     ProductName: 'MEASURED',
     ProductVersion: '1.0.0',

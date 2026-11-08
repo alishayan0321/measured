@@ -4,7 +4,7 @@
  *   node tools/train.cjs --events log.json           # train on a real play log
  *   node tools/train.cjs --out train/model.json      # where the blob lands
  *
- * The synthetic mode is a DEMO fixture, not a claim about Ali's taste: it
+ * The synthetic mode is a DEMO fixture, not a claim about anyone's taste: it
  * invents a listener that prefers one sonic cluster of the real 148-track
  * library, plays 24 sessions, and trains on that. It exists so the artifact and
  * the numbers can be inspected before any real listening has happened. Real
@@ -47,7 +47,7 @@ const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 42
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 /* ---- events: either a real log or a synthetic listener -------------------- */
-/* Synthetic listener. IMPORTANT: this is a FIXTURE, not Ali's taste. It models
+/* Synthetic listener. IMPORTANT: this is a FIXTURE, not a real listener's taste. It models
  * behaviour the feature set can actually describe — listens on from a track that
  * sounds like the last one, rewards familiar artists, punishes what it skipped
  * before — so the pipeline has something learnable to fit. A persona whose taste

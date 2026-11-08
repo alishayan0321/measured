@@ -8,7 +8,7 @@ Unicode true
 
 !define APP  "MEASURED"
 !define VER  "1.0.0"
-!define PUB  "Ali"
+!define PUB  "MEASURED"
 !define EXE  "MEASURED.exe"
 !define UNINST "Uninstall MEASURED.exe"
 !define REGKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\MEASURED"
