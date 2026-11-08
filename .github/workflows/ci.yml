@@ -61,5 +61,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
+      - name: stub yt-dlp
+        # yt-dlp.exe is gitignored but listed in bundle.resources, so the Tauri
+        # build script refuses to run without it. `cargo check` never bundles,
+        # so an empty placeholder is enough here.
+        run: New-Item -ItemType File -Path desktop/yt-dlp.exe -Force
       - name: check
         run: cargo check -p measured-desktop
