@@ -23,6 +23,7 @@ use measured_core as core;
 
 mod net;
 mod proxy;
+mod media;
 
 #[derive(Debug, Clone, Serialize)]
 struct TrackOut {
@@ -502,6 +503,9 @@ fn main() {
             if let Some(w) = app.get_webview_window("main") {
                 w.set_theme(Some(if dark { Theme::Dark } else { Theme::Light })).ok();
             }
+            // Bind the OS media controls to the main window. Must run after the
+            // window exists (SMTC needs its HWND) and before the UI can play.
+            media::init(&handle);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -520,6 +524,8 @@ fn main() {
             version,
             platform,
             proxy_base,
+            media::smtc_update,
+            media::smtc_clear,
             net::yt_search,
             net::yt_resolve,
             net::yt_audio,

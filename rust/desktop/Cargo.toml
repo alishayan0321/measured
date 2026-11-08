@@ -16,6 +16,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip"] }
+# OS media controls: Windows SMTC, macOS Now Playing, Linux MPRIS.
+souvlaki = "0.9"
+# Needed to pull the HWND out of the Tauri window for SMTC.
+raw-window-handle = "0.6"
 
 [features]
 default = ["custom-protocol"]

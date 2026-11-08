@@ -1005,6 +1005,30 @@
     } catch (err) { /* a missing bridge must never break playback */ }
   }
 
+  // Desktop half of the same idea: Windows SMTC / macOS Now Playing / Linux
+  // MPRIS. Without this the hardware media keys and the lock screen do nothing,
+  // because a WebView has no OS media session of its own.
+  let lastSmtc = 0;
+  function pushSmtc(force) {
+    const tauri = window.__TAURI__;
+    if (!tauri || !tauri.core || !tauri.core.invoke) return;
+    const now = Date.now();
+    if (!force && now - lastSmtc < 1200) return;
+    lastSmtc = now;
+    const t = VIEW[cur] || {};
+    tauri.core.invoke('smtc_update', {
+      now: {
+        title: clean(t.title) || null,
+        artist: clean(t.artist) || null,
+        album: clean(t.album) || null,
+        cover: t.cover ? String(t.cover) : null,
+        durationMs: Math.round((audio.duration || t.dur || 0) * 1000) || null,
+        playing: !!playing && !audio.paused,
+        positionMs: Math.round((audio.currentTime || 0) * 1000)
+      }
+    }).catch(() => {});
+  }
+
   function play() {
     initGraph();
     if (ac && ac.state === 'suspended') ac.resume();
@@ -1019,6 +1043,7 @@
     b.setAttribute('aria-label', p ? 'Pause' : 'Play');
     b.setAttribute('aria-pressed', p ? 'true' : 'false');
     pushMedia(true);
+    pushSmtc(true);
   };
   function step(d) {
     if (!VIEW.length) return;
@@ -1039,6 +1064,18 @@
     pushMedia(true);
   };
 
+  // OS transport buttons (hardware media keys, lock screen, volume flyout) come
+  // back as Tauri events. Route them through the same command handler Android
+  // uses, so exactly one place decides what "next" means.
+  if (window.__TAURI__ && window.__TAURI__.event) {
+    window.__TAURI__.event.listen('smtc-event', (e) => {
+      try { PlayerAPI.mediaCommand(e.payload); } catch (err) {}
+    });
+    window.__TAURI__.event.listen('smtc-seek', (e) => {
+      try { PlayerAPI.mediaCommand('seek', Number(e.payload) || 0); } catch (err) {}
+    });
+  }
+
   audio.addEventListener('timeupdate', () => {
     const d = audio.duration || 0, c = audio.currentTime || 0;
     if (RANK) { try { RANK.tick(c); } catch (e) {} }
@@ -1058,6 +1095,7 @@
     }
     if (npOpen()) syncNow();
     pushMedia(false);
+    pushSmtc(false);
   });
   audio.addEventListener('loadedmetadata', () => {
     const d = audio.duration || 0;
