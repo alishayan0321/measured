@@ -66,5 +66,8 @@ jobs:
         # build script refuses to run without it. `cargo check` never bundles,
         # so an empty placeholder is enough here.
         run: New-Item -ItemType File -Path desktop/yt-dlp.exe -Force
+      - name: stage web UI
+        # frontendDist points at desktop/dist, which is generated, not committed.
+        run: node stage-ui.cjs
       - name: check
         run: cargo check -p measured-desktop
