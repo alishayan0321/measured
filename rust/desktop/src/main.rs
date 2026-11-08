@@ -33,6 +33,7 @@ struct TrackOut {
     title: String,
     ext: String,
     bytes: u64,
+    mtime_ms: u64,
     duration_ms: u64,
     video_id: Option<String>,
     cover: Option<String>,
@@ -166,6 +167,7 @@ fn collect(dir: &Path, key: &str, thumbs: Option<&Path>, added: bool) -> Vec<Tra
             title: t.title,
             ext: t.ext,
             bytes: t.bytes,
+            mtime_ms: t.mtime_ms,
             duration_ms: t.duration_ms,
             video_id: t.video_id,
             added,
@@ -235,8 +237,41 @@ fn prepare(app: AppHandle, src: String, file: String) -> Result<Option<String>, 
     let out = transcode_dir(&app).join(out_name);
     if !out.is_file() {
         core::decode_to_wav(&input, &out).map_err(|e| e.to_string())?;
+        // 16-bit WAV is roughly 10 MB per minute, so an unbounded cache fills
+        // the disk. Keep the newest files under a cap and drop the rest.
+        trim_cache(&transcode_dir(&app), 2 * 1024 * 1024 * 1024);
     }
     Ok(Some(out.to_string_lossy().to_string()))
+}
+
+/// Evict the oldest transcodes until the cache is back under `cap_bytes`.
+fn trim_cache(dir: &Path, cap_bytes: u64) {
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let mut files: Vec<(std::time::SystemTime, u64, PathBuf)> = rd
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            let p = e.path();
+            let m = e.metadata().ok()?;
+            if !m.is_file() {
+                return None;
+            }
+            Some((m.modified().ok()?, m.len(), p))
+        })
+        .collect();
+    let total: u64 = files.iter().map(|(_, n, _)| *n).sum();
+    if total <= cap_bytes {
+        return;
+    }
+    files.sort_by_key(|(t, _, _)| *t); // oldest first
+    let mut over = total - cap_bytes;
+    for (_, n, p) in files {
+        if over == 0 {
+            break;
+        }
+        if std::fs::remove_file(&p).is_ok() {
+            over = over.saturating_sub(n);
+        }
+    }
 }
 
 #[tauri::command]
@@ -447,8 +482,19 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            PROXY_BASE.get_or_init(proxy::start);
             let handle = app.handle().clone();
+            PROXY_BASE.get_or_init(|| {
+                let mut roots: Vec<PathBuf> = Vec::new();
+                if let Some(d) = bundled_dir(&handle) {
+                    roots.push(d);
+                }
+                roots.push(added_dir(&handle));
+                if let Some(d) = thumbs_dir(&handle) {
+                    roots.push(d);
+                }
+                roots.push(transcode_dir(&handle));
+                proxy::start(roots)
+            });
             load_settings(&handle);
             let prior: PriorSettings =
                 serde_json::from_value(get("theme".into(), None)).unwrap_or(PriorSettings { theme: None });

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <link rel="icon" type="image/png" href="icon.png">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Measure Player</title>
+<title>MEASURED</title>
 <style>
   :root{
     --paper:#e8e4db; --panel:#ece8e0; --panel-2:#e2ded4;
@@ -37,7 +37,7 @@
   header{display:flex; align-items:center; gap:22px; padding:0 26px; border-bottom:1px solid var(--hair)}
   .mark{display:flex; align-items:baseline; gap:10px}
   .mark b{font-family:var(--serif); font-size:19px; letter-spacing:.14em; font-weight:600}
-  .mark span{font-family:var(--mono); font-size:9px; letter-spacing:.26em; color:var(--graphite); text-transform:uppercase}
+  .mark span{font-family:var(--mono); font-size:10.5px; letter-spacing:.26em; color:var(--graphite); text-transform:uppercase}
   .rule{flex:1; height:1px; background:linear-gradient(90deg,var(--accent) 0 34px,var(--hair) 34px 100%)}
   .count{font-family:var(--mono); font-size:10px; letter-spacing:.16em; color:var(--graphite)}
   .search{position:relative}
@@ -53,9 +53,9 @@
 
   .lib{border-right:1px solid var(--hair); display:flex; flex-direction:column; min-height:0}
   .lib-h{display:flex; justify-content:space-between; align-items:center; padding:16px 20px 10px}
-  .kicker{font-family:var(--mono); font-size:9px; letter-spacing:.24em; text-transform:uppercase; color:var(--graphite)}
+  .kicker{font-family:var(--mono); font-size:10.5px; letter-spacing:.24em; text-transform:uppercase; color:var(--graphite)}
   .lib-list{overflow:auto; padding:0 10px 16px}
-  /* themed rail — no OS arrow buttons (scrollbar-width:thin forced the native one) */
+  /* themed rail â€” no OS arrow buttons (scrollbar-width:thin forced the native one) */
   .lib-list::-webkit-scrollbar{width:12px; height:12px; background:transparent}
   .lib-list::-webkit-scrollbar-button{display:none; width:0; height:0}
   .lib-list::-webkit-scrollbar-track{background:transparent}
@@ -77,12 +77,12 @@
   .row:hover{background:rgba(255,255,255,.5)}
   .row.on{background:var(--accent-soft)}
   .row.on::before{content:""; position:absolute; left:2px; top:11px; bottom:11px; width:2px; background:var(--accent); border-radius:2px}
-  .row .n{font-family:var(--mono); font-size:9px; color:var(--graphite); text-align:right}
+  .row .n{font-family:var(--mono); font-size:10.5px; color:var(--graphite); text-align:right}
   .row.on .n{color:var(--accent-ink)}
   .row .t{min-width:0}
   .row .t b{display:block; font-size:12.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; letter-spacing:-.005em}
   .row .t i{display:block; font-style:normal; font-size:10.5px; color:var(--graphite); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px}
-  .row .d{font-family:var(--mono); font-size:9.5px; color:var(--graphite)}
+  .row .d{font-family:var(--mono); font-size:10.5px; color:var(--graphite)}
 
   .hero{padding:26px 34px 24px; display:flex; flex-direction:column; gap:18px; min-height:0; min-width:0}
   .meta{flex:0 0 auto}
@@ -99,7 +99,7 @@
   @keyframes rise{from{opacity:0; transform:translateY(12px)} to{opacity:1; transform:none}}
   .chips{display:flex; gap:8px; margin-top:14px}
   .chip{
-    font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase;
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase;
     padding:4px 9px; border-radius:999px; background:var(--panel); box-shadow:var(--raised-sm); color:var(--ink-soft);
   }
   .chip.acc{background:#c93a16; color:#fff; box-shadow:0 6px 14px -8px rgba(220,63,25,.9)}
@@ -107,18 +107,18 @@
   .scope{margin:22px 0 0; position:relative}
   .scope-head{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px}
   .legend{display:flex; gap:16px; align-items:center}
-  .key{display:flex; gap:6px; align-items:center; font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--graphite)}
+  .key{display:flex; gap:6px; align-items:center; font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--graphite)}
   .key i{width:14px; height:3px; display:block; border-radius:2px}
   .key.m i{background:rgba(20,19,16,.6)}
   .key.l i{background:repeating-linear-gradient(90deg,rgba(20,19,16,.55) 0 4px,transparent 4px 7px)}
   .key.v i{background:var(--accent)}
   .plate{position:relative; border-radius:12px; background:var(--panel-2); box-shadow:var(--well); padding:14px 16px 10px}
   canvas{display:block; width:100%; height:100%; min-height:0}
-  .axis{display:flex; justify-content:space-between; margin-top:6px; font-family:var(--mono); font-size:8.5px; letter-spacing:.1em; color:var(--graphite)}
+  .axis{display:flex; justify-content:space-between; margin-top:6px; font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; color:var(--graphite)}
 
   .readout{display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin:0; flex:0 0 auto}
   .cell{background:var(--panel); border-radius:10px; box-shadow:var(--raised-sm); padding:10px 12px 11px}
-  .cell .k{font-family:var(--mono); font-size:8.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--graphite)}
+  .cell .k{font-family:var(--mono); font-size:10.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--graphite)}
   .cell .v{font-family:var(--mono); font-size:19px; font-weight:600; letter-spacing:-.02em; margin-top:4px; font-variant-numeric:tabular-nums}
   .cell .v s{text-decoration:none; font-size:10px; color:var(--graphite); margin-left:2px}
 
@@ -147,7 +147,7 @@
   .vol .rail{position:absolute; left:0; right:0; height:5px; border-radius:3px; background:var(--panel-2); box-shadow:var(--well)}
   .vol .fill{position:absolute; left:0; height:5px; border-radius:3px; background:rgba(20,19,16,.65); width:70%}
   .vol .head{position:absolute; width:9px; height:9px; border-radius:50%; background:var(--panel); box-shadow:var(--raised-sm); left:70%; transform:translateX(-50%)}
-  kbd{font-family:var(--mono); font-size:9px; letter-spacing:.1em; color:var(--graphite); border:1px solid var(--hair); border-radius:4px; padding:2px 5px}
+  kbd{font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; color:var(--graphite); border:1px solid var(--hair); border-radius:4px; padding:2px 5px}
   .hint{display:flex; gap:10px; align-items:center}
 
   /* ---- accessibility + reflow ---- */
@@ -176,7 +176,7 @@
   }
 </style>
 <style>
-/* FINISH-GATE — overrides from the design review. Later cascade wins. */
+/* FINISH-GATE â€” overrides from the design review. Later cascade wins. */
 
 /* vertical budget: one gap was 40px against 18/18 elsewhere */
 .scope{margin:0}
@@ -186,7 +186,7 @@ h1{font-size:clamp(26px,2.3vw,34px); line-height:1.06; letter-spacing:-.014em; m
 .transport{padding-top:12px}
 
 /* microtype: the instrument layer was the faintest text on screen */
-.axis{color:var(--graphite); font-size:9.5px; letter-spacing:.04em}
+.axis{color:var(--graphite); font-size:10.5px; letter-spacing:.04em}
 kbd{color:var(--graphite)}
 .row .n,.row .d{color:var(--graphite)}
 .search input::placeholder{color:var(--graphite)}
@@ -221,7 +221,7 @@ kbd{color:var(--graphite)}
 </style>
 <link rel="stylesheet" href="deck/vinyl.css">
 <style>
-/* STEP 1 — fingerprint gone; the stats row carries the numbers */
+/* STEP 1 â€” fingerprint gone; the stats row carries the numbers */
 .scope, .scope-ghost{display:none !important}
 .hero{display:block}
 
@@ -270,7 +270,7 @@ kbd{color:var(--graphite)}
 .play::before{ background:radial-gradient(60% 100% at 50% 100%, rgba(255,190,160,.55), rgba(255,190,160,0) 70%) }
 </style>
 <style>
-/* ── glass dock: transport as a floating frosted pill ────────────── */
+/* â”€â”€ glass dock: transport as a floating frosted pill â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .transport{
   display:flex; align-items:center; gap:14px;
   padding:9px 16px 9px 10px;
@@ -370,7 +370,7 @@ kbd{color:var(--graphite)}
 @media (max-width:1180px){ .transport{flex-wrap:wrap; border-radius:26px} }
 </style>
 <style>
-/* ── FINAL: one-step glass on the controls, neumorph everywhere else ── */
+/* â”€â”€ FINAL: one-step glass on the controls, neumorph everywhere else â”€â”€ */
 
 /* 1. no nested pills: the transport is a flat row, buttons carry the glass */
 .transport{
@@ -473,7 +473,7 @@ kbd{color:var(--graphite)}
 @media (prefers-reduced-motion:reduce){ .rnd,.play{transition:none} }
 </style>
 <style>
-/* ── one centred axis: title, chips, deck, stats, dock ─────────── */
+/* â”€â”€ one centred axis: title, chips, deck, stats, dock â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .meta{text-align:center}
 .meta .artist{justify-content:center; display:flex}
 .meta h1{text-align:center}
@@ -494,7 +494,7 @@ kbd{color:var(--graphite)}
 .readout{max-width:1010px; margin:0 auto}
 </style>
 <style>
-/* ── corrections: neo buttons, left-aligned meta row, even vertical rhythm ── */
+/* â”€â”€ corrections: neo buttons, left-aligned meta row, even vertical rhythm â”€â”€ */
 
 /* 1. kill the glass sheen layers, go back to soft neumorph */
 .rnd::after, .play::after, .rnd::before, .play::before{ content:none !important; display:none !important }
@@ -565,7 +565,7 @@ kbd{color:var(--graphite)}
   margin-top:10px !important;
 }
 
-/* 3. one axis, even gaps: deck → stats → transport */
+/* 3. one axis, even gaps: deck â†’ stats â†’ transport */
 .deck{max-width:none !important; margin:0 !important}
 .readout{
   max-width:none !important;
@@ -585,7 +585,7 @@ kbd{color:var(--graphite)}
   .readout{grid-template-columns:repeat(3,minmax(0,1fr)) !important}
 }
 
-/* 4. vertical centring — the song info was hanging from the top edge
+/* 4. vertical centring â€” the song info was hanging from the top edge
       (24px above, ~70px below). */
 .hero{
   display:flex; flex-direction:column;
@@ -596,7 +596,7 @@ kbd{color:var(--graphite)}
 /* the deck's song panel is 174px against a 236px record: centre it */
 .deck-body{align-items:center}
 
-/* 5. cover art — the band above the artist name was dead space.
+/* 5. cover art â€” the band above the artist name was dead space.
       A record sleeve now sits on the left of the meta block; the text
       column keeps the old left axis. Size is vh-driven so the 663px
       window still fits and tall windows get a bigger sleeve. */
@@ -633,7 +633,7 @@ kbd{color:var(--graphite)}
 .meta.no-cover .sleeve img{display:none}
 .meta.no-cover .sleeve-fallback{display:grid}
 
-/* ── settings sheet · theme · mobile ───────────────────────────── */
+/* â”€â”€ settings sheet Â· theme Â· mobile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 header{position:relative}
 .gear{flex:0 0 auto;width:30px;height:30px;display:grid;place-items:center;border:1px solid var(--hair);border-radius:2px;background:linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,.06));color:var(--ink-soft);cursor:pointer;transition:color .16s,border-color .16s,box-shadow .16s}
 .gear:hover{color:var(--ink);border-color:rgba(20,19,16,.30);box-shadow:0 1px 3px rgba(20,19,16,.14)}
@@ -751,7 +751,7 @@ header{position:relative}
   .readout .cell .v{font-size:13px}
 }
 
-/* ── gear: leans on hover, keeps turning while settings is open ───────────── */
+/* â”€â”€ gear: leans on hover, keeps turning while settings is open â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .gear svg{transform-origin:50% 50%;transition:transform .42s cubic-bezier(.22,.8,.24,1)}
 .gear:hover svg,.gear:focus-visible svg{transform:rotate(62deg)}
 .gear:active svg{transform:rotate(26deg) scale(.94);transition-duration:.12s}
@@ -764,7 +764,7 @@ body.sheet-open .gear{color:var(--accent-ink);border-color:rgba(201,58,22,.42)}
   body.sheet-open .gear svg{animation:none}
 }
 
-/* ── the settings sheet scrolls too, so its bar follows the same theme ────── */
+/* â”€â”€ the settings sheet scrolls too, so its bar follows the same theme â”€â”€â”€â”€â”€â”€ */
 .sheet-body{scrollbar-width:thin;scrollbar-color:rgba(20,19,16,.24) transparent}
 .sheet-body::-webkit-scrollbar{width:12px;height:12px;background:transparent}
 .sheet-body::-webkit-scrollbar-button{display:none;width:0;height:0}
@@ -779,7 +779,7 @@ body.sheet-open .gear{color:var(--accent-ink);border-color:rgba(201,58,22,.42)}
 [data-theme="dark"] .sheet-body::-webkit-scrollbar-thumb:active{background:rgba(244,89,43,.88);background-clip:content-box}
 
 
-/* ── now playing card (player theme, notification-card layout) ──────────── */
+/* â”€â”€ now playing card (player theme, notification-card layout) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .np-scrim{position:fixed;inset:0;z-index:70;background:rgba(20,19,16,.34)}
 .np-scrim[hidden]{display:none!important}
 .np{position:fixed;z-index:71;left:10px;right:10px;bottom:10px;margin:0 auto;max-width:440px;padding:12px 16px calc(14px + env(safe-area-inset-bottom));border-radius:16px;border:1px solid var(--hair);background:linear-gradient(180deg,var(--panel),var(--panel-2));color:var(--ink);box-shadow:var(--raised),0 26px 50px -28px rgba(20,19,16,.75);transform:translateY(26px);opacity:0;transition:transform .28s cubic-bezier(.22,.8,.24,1),opacity .2s ease}
@@ -892,7 +892,7 @@ body.video-mode .hero{gap:0}
 @media (max-width:760px){.yt-badge{bottom:calc(84px + env(safe-area-inset-bottom))}}
 
 
-/* design pass v1 (design QA) — appended last so it wins the cascade */
+/* design pass v1 (design QA) â€” appended last so it wins the cascade */
 :root{ --engrave: rgba(20,19,16,.62); --engrave-2: rgba(20,19,16,.70) }
 [data-theme="dark"]{ --engrave: rgba(241,237,227,.55); --engrave-2: rgba(241,237,227,.66) }
 
@@ -1080,7 +1080,7 @@ body.video-mode .hero{gap:0}
   <header>
     <div class="mark"><b>MEASURE</b><span>player</span></div>
     <div class="rule"></div>
-    <div class="count" id="count">—</div>
+    <div class="count" id="count">â€”</div>
     <button class="lib-btn" id="lib-btn" aria-expanded="false" aria-controls="list">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
       <span id="lib-btn-n">Library</span>
@@ -1131,7 +1131,7 @@ body.video-mode .hero{gap:0}
           <div class="sleeve-fallback" aria-hidden="true"><b id="cover-mono">M</b></div>
         </div>
         <div class="meta-text">
-          <div class="artist" id="artist">—</div>
+          <div class="artist" id="artist">â€”</div>
           <h1 id="title">pick a track</h1>
           <div class="chips" id="chips"></div>
         </div>
@@ -1140,8 +1140,8 @@ body.video-mode .hero{gap:0}
 <!-- deck:start -->
 <section class="deck" id="deck" aria-label="Turntable">
   <div class="deck-head">
-    <div class="deck-brand">MEASURE <b>·</b> MK II</div>
-    <div class="deck-serial" id="vd-serial">SIDE A · BELT DRIVE · 33⅓</div>
+    <div class="deck-brand">MEASURE <b>Â·</b> MK II</div>
+    <div class="deck-serial" id="vd-serial">SIDE A Â· BELT DRIVE Â· 33â…“</div>
   </div>
 
   <div class="deck-body">
@@ -1150,10 +1150,10 @@ body.video-mode .hero{gap:0}
         <div class="spin" id="vd-spin">
           <canvas id="vd-disc" width="520" height="520" role="img" aria-label="Vinyl record"></canvas>
           <div class="dlabel">
-            <div class="dl-cat" id="vd-cat">M—001</div>
-            <div class="dl-artist" id="vd-artist">—</div>
-            <div class="dl-title" id="vd-title">—</div>
-            <div class="dl-meta">33⅓ · STEREO</div>
+            <div class="dl-cat" id="vd-cat">Mâ€”001</div>
+            <div class="dl-artist" id="vd-artist">â€”</div>
+            <div class="dl-title" id="vd-title">â€”</div>
+            <div class="dl-meta">33â…“ Â· STEREO</div>
           </div>
         </div>
         <div class="sheen"></div>
@@ -1188,7 +1188,7 @@ body.video-mode .hero{gap:0}
         <circle cx="272" cy="44" r="4.6" fill="#3a362f"/>
         <circle cx="270.8" cy="42.8" r="1.5" fill="rgba(255,255,255,.6)"/>
 
-        <!-- rotating assembly: counterweight · tube · headshell · cartridge -->
+        <!-- rotating assembly: counterweight Â· tube Â· headshell Â· cartridge -->
         <g class="arm-g" id="vd-arm">
           <rect x="-46" y="-8.5" width="30" height="17" rx="3.5" fill="url(#vd-cw)"/>
           <rect x="-46" y="-8.5" width="30" height="3" rx="1.5" fill="rgba(255,255,255,.35)"/>
@@ -1210,16 +1210,16 @@ body.video-mode .hero{gap:0}
 
     <div class="deck-side">
       <div class="deck-id">
-        <div class="id-cat"><span id="vd-cat2">M—001 / 148</span><span class="id-sep">·</span><span>SIDE A</span></div>
-        <div class="id-artist" id="vd-artist2">—</div>
-        <div class="id-title" id="vd-title2">—</div>
-        <div class="id-matrix"><span>MATRIX</span> <b id="vd-matrix">MEAS-001-A1</b> <span class="id-dot">·</span> <span>LACQUER CUT</span></div>
+        <div class="id-cat"><span id="vd-cat2">Mâ€”001 / 148</span><span class="id-sep">Â·</span><span>SIDE A</span></div>
+        <div class="id-artist" id="vd-artist2">â€”</div>
+        <div class="id-title" id="vd-title2">â€”</div>
+        <div class="id-matrix"><span>MATRIX</span> <b id="vd-matrix">MEAS-001-A1</b> <span class="id-dot">Â·</span> <span>LACQUER CUT</span></div>
       </div>
 
       <div class="deck-row">
-        <div class="deck-cell"><div class="k">Speed</div><div class="v">33⅓ <small>rpm</small></div></div>
+        <div class="deck-cell"><div class="k">Speed</div><div class="v">33â…“ <small>rpm</small></div></div>
         <div class="deck-cell"><div class="k">Platter</div><div class="v" id="vd-rpm">0.0</div></div>
-        <div class="deck-cell"><div class="k">Tracking</div><div class="v" id="vd-radius">—</div></div>
+        <div class="deck-cell"><div class="k">Tracking</div><div class="v" id="vd-radius">â€”</div></div>
         <div class="deck-cell"><div class="k">Cartridge</div><div class="v">MC <small>0.4 mV</small></div></div>
       </div>
 
@@ -1230,7 +1230,7 @@ body.video-mode .hero{gap:0}
 
       <p class="deck-note">
         <span class="lamp" id="vd-lamp"></span>
-        <span id="vd-note">Idle — platter stopped. The arm sits on its rest until a track starts.</span>
+        <span id="vd-note">Idle â€” platter stopped. The arm sits on its rest until a track starts.</span>
       </p>
     </div>
   </div>
@@ -1240,11 +1240,11 @@ body.video-mode .hero{gap:0}
       <div class="scope-ghost" aria-hidden="true"><canvas id="scope"></canvas></div>
 
       <div class="readout" id="readout">
-        <div class="cell"><div class="k">Loudness</div><div class="v" id="r-lufs">—</div></div>
-        <div class="cell"><div class="k">True peak</div><div class="v" id="r-tp">—</div></div>
-        <div class="cell"><div class="k">Crest</div><div class="v" id="r-crest">—</div></div>
-        <div class="cell"><div class="k">Top</div><div class="v" id="r-roll">—</div></div>
-        <div class="cell"><div class="k">Source</div><div class="v" id="r-src">—</div></div>
+        <div class="cell"><div class="k">Loudness</div><div class="v" id="r-lufs">â€”</div></div>
+        <div class="cell"><div class="k">True peak</div><div class="v" id="r-tp">â€”</div></div>
+        <div class="cell"><div class="k">Crest</div><div class="v" id="r-crest">â€”</div></div>
+        <div class="cell"><div class="k">Top</div><div class="v" id="r-roll">â€”</div></div>
+        <div class="cell"><div class="k">Source</div><div class="v" id="r-src">â€”</div></div>
       </div>
 
       <div class="transport">
@@ -1267,7 +1267,7 @@ body.video-mode .hero{gap:0}
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" opacity=".7"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 010 7" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
           <div class="track" id="vol" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="70" aria-valuetext="70%"><div class="rail"></div><div class="fill" id="vfill"></div><div class="head" id="vhead"></div></div>
         </div>
-        <div class="hint" id="hint-keys" aria-label="Shortcuts: space play or pause, left and right seek, up and down volume, n and p next and previous, slash to filter"><kbd>space</kbd><kbd>←→</kbd><kbd>↑↓</kbd><kbd>n/p</kbd><kbd>/</kbd></div>
+        <div class="hint" id="hint-keys" aria-label="Shortcuts: space play or pause, left and right seek, up and down volume, n and p next and previous, slash to filter"><kbd>space</kbd><kbd>â†â†’</kbd><kbd>â†‘â†“</kbd><kbd>n/p</kbd><kbd>/</kbd></div>
       </div>
     </section>
   </main>
@@ -1299,9 +1299,9 @@ body.video-mode .hero{gap:0}
 
     <section class="sheet-s">
       <div class="lab">Library</div>
-      <div class="kv"><span>Tracks</span><b id="st-tracks">—</b></div>
-      <div class="kv"><span>On disk</span><b id="st-audio">—</b></div>
-      <div class="kv"><span>Added by you</span><b id="st-added">—</b></div>
+      <div class="kv"><span>Tracks</span><b id="st-tracks">â€”</b></div>
+      <div class="kv"><span>On disk</span><b id="st-audio">â€”</b></div>
+      <div class="kv"><span>Added by you</span><b id="st-added">â€”</b></div>
       <button class="btn" id="act-add">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
         Add songs
@@ -1315,7 +1315,7 @@ body.video-mode .hero{gap:0}
       <div class="eq-head">
         <label class="eq-toggle"><input type="checkbox" id="eq-on"> <span>Enable</span></label>
         <select id="eq-preset" aria-label="Equaliser preset">
-          <option value="">Preset…</option>
+          <option value="">Presetâ€¦</option>
           <option>Flat</option>
           <option>Bass boost</option>
           <option>Vocal</option>
@@ -1338,25 +1338,25 @@ body.video-mode .hero{gap:0}
     <section class="sheet-s" id="sec-storage" hidden>
       <div class="lab">Storage</div>
       <div class="bar"><i id="st-bar"></i></div>
-      <div class="kv"><span>Free space</span><b id="st-free">—</b></div>
+      <div class="kv"><span>Free space</span><b id="st-free">â€”</b></div>
     </section>
 
     <div class="sheet-foot">
-      <span>MEASURE PLAYER <b>2.0.0</b> · <span id="st-plat">web</span></span>
-      <span>local only · no network</span>
+      <span>MEASURE PLAYER <b>2.0.0</b> Â· <span id="st-plat">web</span></span>
+      <span>local only Â· no network</span>
     </div>
   </div>
 </aside>
 
-<!-- Now playing card — same layout as the phone's media card, in the player's own theme. -->
+<!-- Now playing card â€” same layout as the phone's media card, in the player's own theme. -->
 <div class="np-scrim" id="np-scrim" hidden></div>
 <section class="np" id="np" role="dialog" aria-modal="true" aria-labelledby="np-title" tabindex="-1" hidden>
   <div class="np-grip" aria-hidden="true"></div>
   <div class="np-head">
     <img class="np-art" id="np-art" alt="" decoding="async">
     <div class="np-id">
-      <div class="np-title" id="np-title">—</div>
-      <div class="np-artist" id="np-artist">—</div>
+      <div class="np-title" id="np-title">â€”</div>
+      <div class="np-artist" id="np-artist">â€”</div>
     </div>
     <div class="np-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
   </div>
@@ -1575,7 +1575,7 @@ body.video-mode .hero{gap:0}
      access restrictions"). The graph was also the only path to ac.destination, so
      the app played silence for every track. Local files can be made CORS-clean
      (crossOrigin='anonymous' works against the asset protocol), YouTube cannot, and
-     the capture cannot be undone — so the EQ taps a second, silent element and the
+     the capture cannot be undone â€” so the EQ taps a second, silent element and the
      real one stays wired straight to the speakers. */
   function initGraph() {
     if (analyser) return;
@@ -1587,7 +1587,7 @@ body.video-mode .hero{gap:0}
       analyser.smoothingTimeConstant = 0.82;
       freq = new Uint8Array(analyser.frequencyBinCount);
       const sink = ac.createGain();
-      sink.gain.value = 0;                       // analysis only — never audible
+      sink.gain.value = 0;                       // analysis only â€” never audible
       analyser.connect(sink); sink.connect(ac.destination);
       analysisEl = new Audio();
       analysisEl.crossOrigin = 'anonymous';      // keeps the tap untainted for local assets
@@ -1629,7 +1629,7 @@ body.video-mode .hero{gap:0}
     return out || raw;
   };
 
-  // micro spectral signature for a queue row (40×24 viewBox)
+  // micro spectral signature for a queue row (40Ã—24 viewBox)
   function sig(bands) {
     const w = 40, h = 24, pad = 2.5;
     const base = '<line class="base" x1="0" y1="' + (h - 1) + '" x2="' + w + '" y2="' + (h - 1) + '"/>';
@@ -1689,7 +1689,7 @@ body.video-mode .hero{gap:0}
       /* PlayerAPI.get is async in the desktop/android shells (invoke) and sync in
          the web shell, so resolve both keys first and hand the ranker a sync view
          of them. A Promise reaching Model.fromJSON would throw and silently leave
-         RANK null — that is exactly what happened in the packaged app. */
+         RANK null â€” that is exactly what happened in the packaged app. */
       const KM = 'measured.rec.model', KL = 'measured.rec.log';
       try {
         PlayerAPI.set('measured.rec.boot', JSON.stringify({
@@ -1812,7 +1812,7 @@ body.video-mode .hero{gap:0}
   }
   function paintHeart(btn, on) {
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    btn.setAttribute('aria-label', on ? 'Liked — click to remove' : 'Like');
+    btn.setAttribute('aria-label', on ? 'Liked â€” click to remove' : 'Like');
     btn.innerHTML = HEART;
   }
 
@@ -1826,12 +1826,12 @@ body.video-mode .hero{gap:0}
       row.tabIndex = (i === cur || (cur < 0 && i === 0)) ? 0 : -1;
       row.innerHTML = '<div class="n">' + String(i + 1).padStart(2, '0') + '</div>' +
         '<svg class="thumb" viewBox="0 0 40 24" preserveAspectRatio="none" aria-hidden="true" focusable="false">' + sig(t.bands) + '</svg>' +
-        '<div class="t"><b></b><i></i></div><div class="d">' + (t.dur ? fmt(t.dur) : '—') + '</div>';
+        '<div class="t"><b></b><i></i></div><div class="d">' + (t.dur ? fmt(t.dur) : 'â€”') + '</div>';
       row.querySelector('b').textContent = clean(t.title) || '(untitled)';
       const arRow = clean(t.artist);
       const shownArtist = looksLikeJunk(arRow) ? 'Unknown artist' : arRow;
       row.querySelector('i').textContent = shownArtist;
-      row.title = clean(t.title) + ' — ' + shownArtist;
+      row.title = clean(t.title) + ' â€” ' + shownArtist;
       const hb = document.createElement('button');
       hb.className = 'like';
       hb.type = 'button';
@@ -1881,7 +1881,7 @@ body.video-mode .hero{gap:0}
     if (!VIEW[i]) return;
     closeOnline();
     /* Close the book on whatever was playing first. Elapsed comes off the audio
-       element, so a full play and an early skip take the same path — the learner
+       element, so a full play and an early skip take the same path â€” the learner
        has to see both or it degenerates into on-policy learning. */
     if (RANK && cur >= 0 && VIEW[cur] && curFile) {
       const prevDur = audio.duration || VIEW[cur].dur || 0;
@@ -1911,12 +1911,12 @@ body.video-mode .hero{gap:0}
       navigator.mediaSession.metadata = new MediaMetadata({ title: t.title || '', artist: t.artist || '', album: 'Local library' });
     }
 
-    /* Exotic containers (ape, wma, aiff, alac…) are converted first: symphonia on
+    /* Exotic containers (ape, wma, aiff, alacâ€¦) are converted first: symphonia on
        desktop, MediaCodec on Android. Native formats skip straight through. */
     try { if (PlayerAPI.clearNowhere) PlayerAPI.clearNowhere(); } catch (e) {}
     let url = t.url;
     if (!PlayerAPI.isNative(t.file || '')) {
-      if (autoplay) announce('Converting ' + (clean(t.title) || 'this file') + '…');
+      if (autoplay) announce('Converting ' + (clean(t.title) || 'this file') + 'â€¦');
       try {
         const ready = await PlayerAPI.prepare(t);
         if (ready) url = ready;
@@ -1959,11 +1959,11 @@ body.video-mode .hero{gap:0}
     if (t.sr) chips.push('<span class="chip">' + (t.sr / 1000).toFixed(1) + ' kHz</span>');
     if (t.bands.length) chips.push('<span class="chip acc">measured</span>');
     $('chips').innerHTML = chips.join('');
-    $('r-lufs').innerHTML = t.lufs ? t.lufs.toFixed(1) + '<s>LUFS</s>' : '—';
-    $('r-tp').innerHTML = t.tp ? t.tp.toFixed(1) + '<s>dBTP</s>' : '—';
-    $('r-crest').innerHTML = t.crest ? t.crest.toFixed(1) + '<s>dB</s>' : '—';
-    $('r-roll').innerHTML = t.rolloff ? (t.rolloff / 1000).toFixed(1) + '<s>kHz</s>' : '—';
-    $('r-src').innerHTML = t.kbps ? Math.round(t.kbps) + '<s>kbps</s>' : (t.ext || '—').toUpperCase();
+    $('r-lufs').innerHTML = t.lufs ? t.lufs.toFixed(1) + '<s>LUFS</s>' : 'â€”';
+    $('r-tp').innerHTML = t.tp ? t.tp.toFixed(1) + '<s>dBTP</s>' : 'â€”';
+    $('r-crest').innerHTML = t.crest ? t.crest.toFixed(1) + '<s>dB</s>' : 'â€”';
+    $('r-roll').innerHTML = t.rolloff ? (t.rolloff / 1000).toFixed(1) + '<s>kHz</s>' : 'â€”';
+    $('r-src').innerHTML = t.kbps ? Math.round(t.kbps) + '<s>kbps</s>' : (t.ext || 'â€”').toUpperCase();
     const cnv = $('scope');
     const FR = ['32','50','63','80','100','125','160','200','250','315','400','500','630','800','1k','1.25k','1.6k','2k','2.5k','3.15k','4k','5k','6.3k','8k','10k','12.5k','16k'];
     if (t.bands && t.bands.length) {
@@ -2118,7 +2118,7 @@ body.video-mode .hero{gap:0}
       if (g && g.ok) {
         try { PlayerAPI.set('measured.shelf.want', JSON.stringify(SHELF.stats().downloads)); } catch (e) {}
       }
-      if (verdict === 'ban' && SHELF.isBanned(c.id)) console.info('shelf: never again — ' + c.artist + ' · ' + c.title);
+      if (verdict === 'ban' && SHELF.isBanned(c.id)) console.info('shelf: never again â€” ' + c.artist + ' Â· ' + c.title);
     } catch (e) {}
   }
 
@@ -2301,7 +2301,7 @@ body.video-mode .hero{gap:0}
       }
     }
 
-    // library median spine — the reference this track sits against
+    // library median spine â€” the reference this track sits against
     if (median && median.length) {
       g.beginPath();
       for (let i = 0; i < median.length; i++) {
@@ -2325,7 +2325,7 @@ body.video-mode .hero{gap:0}
       }
     }
 
-    // LIVE: orange bars overlapping the measured ones — same slot, same width, same rounding,
+    // LIVE: orange bars overlapping the measured ones â€” same slot, same width, same rounding,
     // so the moving EQ reads as the same instrument with a needle run over it.
     {
       const live = analyser && !audio.paused && !audio.muted;
@@ -2382,11 +2382,19 @@ body.video-mode .hero{gap:0}
   function loop() {
     if (loopOn) return;
     loopOn = true;
-    const tick = () => { draw(); requestAnimationFrame(tick); };
+    const tick = () => {
+      // The scope canvas is hidden in every current layout (see the
+      // `.scope{display:none}` rule), so an unconditional rAF would burn a
+      // frame callback forever for a draw() that immediately returns. Stop
+      // when it is not visible; the next loop() call restarts it.
+      if (!cv.offsetParent) { loopOn = false; return; }
+      draw();
+      requestAnimationFrame(tick);
+    };
     tick();
   }
 
-  /* ── settings sheet · theme · library management ─────────────── */
+  /* â”€â”€ settings sheet Â· theme Â· library management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   const THEME_KEY = 'theme';
   let sheetOpen = false, libOpen = false, lastFocus = null;
 
@@ -2427,11 +2435,11 @@ body.video-mode .hero{gap:0}
     $('st-plat').textContent = PlayerAPI.platform;
     $('act-add').hidden = web;
     if (web) $('act-note').textContent = 'Adding songs works in the desktop and Android app.';
-    $('st-tracks').textContent = TRACKS.length ? String(TRACKS.length) : '—';
-    $('st-audio').textContent = STATS && STATS.bytes ? humanBytes(STATS.bytes) : '—';
+    $('st-tracks').textContent = TRACKS.length ? String(TRACKS.length) : 'â€”';
+    $('st-audio').textContent = STATS && STATS.bytes ? humanBytes(STATS.bytes) : 'â€”';
     const added = TRACKS.filter((t) => t.added);
     const addedBytes = added.reduce((a, t) => a + (Number(t.bytes) || 0), 0);
-    $('st-added').textContent = added.length ? added.length + ' · ' + humanBytes(addedBytes) : 'none yet';
+    $('st-added').textContent = added.length ? added.length + ' Â· ' + humanBytes(addedBytes) : 'none yet';
     $('act-clear').hidden = !added.length;
     $('sec-storage').hidden = true;
     try {
@@ -2520,7 +2528,7 @@ body.video-mode .hero{gap:0}
       const opened = await PlayerAPI.pickSongs();
       note.textContent = opened === false
         ? 'No file picker on this platform.'
-        : 'Pick audio files in the window that just opened…';
+        : 'Pick audio files in the window that just openedâ€¦';
     } catch (e) {
       note.textContent = 'Could not open the file picker.';
     }
@@ -2562,7 +2570,7 @@ body.video-mode .hero{gap:0}
 
 
 
-  // ── now playing card (player theme) ───────────────────────────────────────
+  // â”€â”€ now playing card (player theme) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   let npLastFocus = null;
   const npOpen = () => $('np').classList.contains('on');
   function syncNow() {
@@ -2956,7 +2964,7 @@ function row(v, sub) {
     paintHeart(ht, true);
     if (!PlayerAPI.canDownload || !PlayerAPI.canDownload()) { likeToast('Liked'); return; }
     ht.dataset.busy = '1';
-    likeToast('Liked — downloading…');
+    likeToast('Liked â€” downloadingâ€¦');
     try {
       const file = await PlayerAPI.download(v);
       ht.dataset.busy = '0';
@@ -3096,7 +3104,7 @@ window.__ytSearch = search;
     const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
     function paintBubble(target, delta) {
-      bubble.innerHTML = fmt(target) + ' <b>' + (delta >= 0 ? '+' : '−') + fmt(Math.abs(delta)) + '</b>';
+      bubble.innerHTML = fmt(target) + ' <b>' + (delta >= 0 ? '+' : 'âˆ’') + fmt(Math.abs(delta)) + '</b>';
       bubble.hidden = false;
     }
 
@@ -3211,7 +3219,7 @@ window.__ytSearch = search;
       b.querySelector('i').textContent = r.artist || '';
       const frac = r.score ? Math.min(1, Math.max(0.06, (r.score + 1.6) / 3.2)) : 0;
       b.querySelector('.up-bar span').style.width = (frac * 100).toFixed(0) + '%';
-      b.title = 'Score ' + (r.score ? r.score.toFixed(2) : '—') + (r.cold ? ' (cold start order)' : '');
+      b.title = 'Score ' + (r.score ? r.score.toFixed(2) : 'â€”') + (r.cold ? ' (cold start order)' : '');
       b.addEventListener('click', function () { try { select(r.index, true); } catch (e) {} });
       return b;
     }
@@ -3231,7 +3239,7 @@ window.__ytSearch = search;
       if (!rows.length) {
         const msg = document.createElement('div');
         msg.className = 'up-empty';
-        msg.textContent = upErr ? ('Ranker error: ' + upErr) : 'Not enough listening yet — this fills in as plays accumulate.';
+        msg.textContent = upErr ? ('Ranker error: ' + upErr) : 'Not enough listening yet â€” this fills in as plays accumulate.';
         localEl.appendChild(msg);
         return;
       }
@@ -3405,22 +3413,22 @@ window.__ytSearch = search;
 
 
 <style>
-/* ═══════════════════════════════════════════════════════════════════════════
-   LIQUID GLASS — an appearance option, not a repaint of the paper theme.
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   LIQUID GLASS â€” an appearance option, not a repaint of the paper theme.
 
    Modelled on Apple's Liquid Glass guidance (developer.apple.com/technologyoverviews/
    liquid-glass + /adopting-liquid-glass):
-     • the material is a distinct FUNCTIONAL layer floating above content, not a
-       background for content — so only chrome (header, deck, readout, transport,
+     â€¢ the material is a distinct FUNCTIONAL layer floating above content, not a
+       background for content â€” so only chrome (header, deck, readout, transport,
        sheet, library, card) becomes glass and the artwork stays printed;
-     • it refracts and tints whatever sits beneath, so the page needs real colour
+     â€¢ it refracts and tints whatever sits beneath, so the page needs real colour
        underneath: a slow, wide colour field instead of flat paper;
-     • every pane carries a specular edge — a bright 1px top rim, a soft inner glow,
+     â€¢ every pane carries a specular edge â€” a bright 1px top rim, a soft inner glow,
        a cool fringe where light bends at the bottom edge, and one long shadow;
-     • controls are concentric with their containers (larger radii, pill buttons);
-     • restraint: list rows and text keep the printed treatment, because glass on
+     â€¢ controls are concentric with their containers (larger radii, pill buttons);
+     â€¢ restraint: list rows and text keep the printed treatment, because glass on
        glass is exactly what the guidance warns against.
-   ═══════════════════════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 html[data-theme="liquid"] {
   color-scheme: light;
@@ -3439,7 +3447,7 @@ html[data-theme="liquid"] {
   --well: inset 0 1px 2px rgba(16, 26, 48, 0.12), inset 0 -1px 0 rgba(255, 255, 255, 0.6);
 }
 
-/* the world the glass refracts — four soft light sources, slowly drifting */
+/* the world the glass refracts â€” four soft light sources, slowly drifting */
 html[data-theme="liquid"] body {
   background:
     radial-gradient(58% 46% at 16% 6%, #ffd7e9 0%, rgba(255, 215, 233, 0) 62%),
@@ -3474,7 +3482,7 @@ html[data-theme="liquid"] body::after {
   to   { transform: translate3d(2%, 2%, 0) scale(1.08); }
 }
 
-/* ── the glass recipe ──────────────────────────────────────────────────────
+/* â”€â”€ the glass recipe â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    One shared surface: bright rim, inner glow, cool refraction fringe, deep but
    distant shadow. The radius is larger than the paper theme's so controls can
    nest concentrically inside their containers. */
@@ -3549,7 +3557,7 @@ html[data-theme="liquid"] .stage {
     0 14px 30px -22px rgba(16, 26, 48, 0.6);
 }
 
-/* ── controls: concentric, pill-shaped, glassy, with a live tint ───────────── */
+/* â”€â”€ controls: concentric, pill-shaped, glassy, with a live tint â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 html[data-theme="liquid"] .rnd {
   background:
     linear-gradient(160deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.42) 52%, rgba(255, 255, 255, 0.66));
@@ -3599,7 +3607,7 @@ html[data-theme="liquid"] .seg-b[aria-checked="true"] {
   color: var(--ink);
 }
 
-/* ── rails: light wells with a tinted fill ────────────────────────────────── */
+/* â”€â”€ rails: light wells with a tinted fill â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 html[data-theme="liquid"] .seek .rail,
 html[data-theme="liquid"] .vol .track .rail,
 html[data-theme="liquid"] .np-rail {
@@ -3619,14 +3627,14 @@ html[data-theme="liquid"] .vol .track b {
   box-shadow: 0 2px 6px rgba(16, 26, 48, 0.35), inset 0 1px 0 #fff;
 }
 
-/* ── readout: engraved labels stay printed, the plate is glass ────────────── */
+/* â”€â”€ readout: engraved labels stay printed, the plate is glass â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 html[data-theme="liquid"] .readout .cell { background: transparent; box-shadow: none; }
 html[data-theme="liquid"] .readout .cell + .cell { border-left: 1px solid rgba(255, 255, 255, 0.55); }
 html[data-theme="liquid"] .readout .k,
 html[data-theme="liquid"] .readout .lbl { color: rgba(16, 26, 48, 0.55); }
 html[data-theme="liquid"] .readout .v { color: var(--ink); }
 
-/* ── library: rows tint on hover, the selected row becomes a glass pill ───── */
+/* â”€â”€ library: rows tint on hover, the selected row becomes a glass pill â”€â”€â”€â”€â”€ */
 html[data-theme="liquid"] .row {
   border-radius: 14px;
   transition: background 0.18s, box-shadow 0.18s;
@@ -3647,12 +3655,12 @@ html[data-theme="liquid"] .sleeve {
   box-shadow: inset 0 1px 0 #fff, 0 10px 24px -16px rgba(16, 26, 48, 0.7);
 }
 
-/* ── the settings sheet reads as a slab of glass over the page ───────────── */
+/* â”€â”€ the settings sheet reads as a slab of glass over the page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 html[data-theme="liquid"] .scrim { background: rgba(16, 26, 48, 0.24); backdrop-filter: blur(2px); }
 html[data-theme="liquid"] .sheet-body { padding-top: 6px; }
 html[data-theme="liquid"] .kvt { border-bottom: 1px solid rgba(255, 255, 255, 0.45); }
 
-/* ── Nowhere / video mode reuse the same material ────────────────────────── */
+/* â”€â”€ Nowhere / video mode reuse the same material â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 html[data-theme="liquid"] .yt-row,
 html[data-theme="liquid"] .vt-row {
   border-radius: 16px;
@@ -3673,7 +3681,7 @@ html[data-theme="liquid"] .scrub-bubble {
   color: var(--ink);
 }
 
-/* ── accessibility: honour reduced transparency and reduced motion ───────── */
+/* â”€â”€ accessibility: honour reduced transparency and reduced motion â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @media (prefers-reduced-transparency: reduce) {
   html[data-theme="liquid"] :is(header, .lib, .deck, .readout, .transport, .sheet, .np) {
     background: #f2f6fc;
@@ -3736,16 +3744,16 @@ html[data-theme="liquid"] .rnd::before{ content:none !important; display:none !i
 html[data-theme="liquid"] .stage{ border-radius:14px !important; }
 html[data-theme="liquid"] .readout .cell{ -webkit-backdrop-filter:none !important; backdrop-filter:none !important; }
 </style><style>
-/* ── LIQUID GLASS, cream revision ─────────────────────────────────────────────
+/* â”€â”€ LIQUID GLASS, cream revision â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    Keep the cream. It is the more honest reading of the
-   guidance: the material does not need a rainbow to refract — it needs real,
+   guidance: the material does not need a rainbow to refract â€” it needs real,
    slightly uneven light behind it and a crisp edge. So the backdrop stays the
    app's own paper, the blue colour field is gone, and the "liquid" quality now
    comes from three things instead:
      1. warm-tinted glass (the panes sample the cream and push it warmer),
      2. a hard specular rim + a cool refraction fringe at the bottom edge, which
         is what the eye actually reads as a lens,
-     3. the artwork itself — sleeves and the vinyl press against the panes, so
+     3. the artwork itself â€” sleeves and the vinyl press against the panes, so
         the tint shifts under each track the way it does in the reference.
    Accent returns to the paper orange, because a cream surface with a blue accent
    reads as two unrelated designs stapled together. */
@@ -3851,7 +3859,7 @@ html[data-theme="liquid"] .row.is-on{
 }
 html[data-theme="liquid"] .row:hover{ background:rgba(255,252,246,.55) !important; }
 </style><style>
-/* ── LIQUID GLASS: the panes borrow the record's own colour ───────────────────
+/* â”€â”€ LIQUID GLASS: the panes borrow the record's own colour â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    Cream backdrop + colourless glass would read as frosted paper, so the deck
    carries a heavily blurred, desaturated copy of the current sleeve inside its
    own pane (the same trick Apple Music uses for now-playing backgrounds). It is
@@ -3885,13 +3893,13 @@ html[data-theme="liquid"] .lib{
     0 26px 50px -30px rgba(28,24,18,.8) !important;
 }
 </style><style>
-/* ── cream glass, final polish ────────────────────────────────────────────────
+/* â”€â”€ cream glass, final polish â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    Two things still read as "paper with a shadow" rather than as material:
    the header met the page with a hard seam, and the turntable sat in a plain
    white box. Both are cheap to fix honestly:
-     • a 14px cream-to-transparent wash under the header gives the scroll-edge
+     â€¢ a 14px cream-to-transparent wash under the header gives the scroll-edge
        impression Apple describes, without moving the layout;
-     • the platter gets its own pane with a bright top rim and a deep seated
+     â€¢ the platter gets its own pane with a bright top rim and a deep seated
        shadow, so the record looks like it is resting on glass, not on paper. */
 html[data-theme="liquid"] header::after{
   content:""; position:absolute; left:0; right:0; top:100%; height:14px; pointer-events:none;
@@ -3916,7 +3924,7 @@ html[data-theme="liquid"] .deck{
     0 30px 56px -30px rgba(28,24,18,.85) !important;
 }
 </style><style>
-/* ── Android WebView cannot do backdrop-filter ────────────────────────────────
+/* â”€â”€ Android WebView cannot do backdrop-filter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    The phone renders the Glass panes as missing/half-painted tiles and the whole
    page flickers: Chromium's backdrop-filter sampling is unstable in a WebView
    composited over a SurfaceView-backed root. Detection is done in JS (engine ===
@@ -3947,11 +3955,11 @@ html.no-blur[data-theme="liquid"] body{ background-attachment:scroll !important;
 html.no-blur[data-theme="liquid"] .deck::after{ opacity:.16; filter:blur(20px) saturate(.7) brightness(1.05); }
 html.no-blur[data-theme="liquid"] .np::after{ opacity:.12; filter:blur(16px) saturate(.8); }
 </style><style>
-/* ── flicker fix, all platforms ───────────────────────────────────────────────
+/* â”€â”€ flicker fix, all platforms â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    The page flickers on desktop as well, so the cause is not WebView:
    Chromium is re-sampling a stack of backdrop-filters (panes inside panes) while
    a fixed, blurred wash sits behind them, and composited layers drop out between
-   frames. On a flat cream backdrop that blur was buying almost nothing anyway —
+   frames. On a flat cream backdrop that blur was buying almost nothing anyway â€”
    the material reads through the rim, the warm tint and the seated shadow.
    So: no backdrop-filter anywhere in Liquid, and the wash becomes a static
    gradient that cannot be repainted mid-frame. */
@@ -3980,7 +3988,7 @@ html[data-theme="liquid"] body::after{ animation:none !important; }
    looking like flat CSS and costs one static paint */
 html[data-theme="liquid"] body::after{ opacity:.055 !important; }
 </style><style>
-/* ── Liquid on the phone ─────────────────────────────────────────────────────
+/* â”€â”€ Liquid on the phone â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    The desktop rules turned the library into an in-flow pane (position:relative +
    margin), but on the phone .lib is the off-canvas drawer: making it in-flow put
    a 100vh block above main, so the whole player sat below the fold and the page
@@ -4028,7 +4036,7 @@ html[data-theme="liquid"] body::after{ opacity:.055 !important; }
 </style><style>
 /* The dock was sticky-bottom inside a hero taller than the viewport, so its last
    ~20px (the seek rail) lived below the screen edge. On the phone it becomes a
-   normal block at the end of the column — the page scrolls instead — and the
+   normal block at the end of the column â€” the page scrolls instead â€” and the
    platter gives back a little width so everything fits a 760px-tall viewport. */
 @media (max-width: 760px) {
   html[data-theme="liquid"] .transport{
@@ -4052,5 +4060,3 @@ html[data-theme="liquid"] body::after{ opacity:.055 !important; }
 </style>
 </body>
 </html>
-
-<script>/* __likesInstalled */</script>

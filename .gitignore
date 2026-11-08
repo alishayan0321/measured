@@ -29,28 +29,19 @@ _*.cjs
 
 # rust / tauri
 **/target/
-*.pdb
-*.wav
-rust/desktop/dist/
-
-# --- Rust / Tauri ---
 rust/target/
+rust/tmp/
 rust/cargo-home/
 rust/rustup-home/
-rust/tmp/
 rust/desktop/dist/
 rust/desktop/yt-dlp.exe
-rust/desktop/icons/*.png.bak# rust build + local toolchain homes
-rust/target/
-rust/tmp/
-rust/cargo-home/
-rust/rustup-home/
-rust/qa/work/
-rust/desktop/dist/
+rust/desktop/icons/*.png.bak
 rust/**/*.exe
 *.pdb
+*.wav
 
-# --- QA / dev scratch (never ship) ---
+# QA / dev scratch (never ship)
+rust/qa/
 rust/qa/cdp/
 rust/qa/work/
 rust/qa/*.png
@@ -61,10 +52,6 @@ android/_d8test/
 .env
 *.env
 
-rust/qa/
-
-
 # generated training artefacts
 train/
 *.blob.json
-

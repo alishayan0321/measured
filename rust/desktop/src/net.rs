@@ -1,9 +1,11 @@
-//! YouTube search through the public InnerTube web endpoint.
+//! YouTube search, InnerTube player resolution, and the optional download path.
 //!
-//! Only *search* lives here. Playback is handed to the official IFrame player
-//! inside the page, so no stream URL is ever extracted and nothing is
-//! downloaded — the video plays exactly as it does on youtube.com, which is
-//! both simpler and within their terms.
+//! `yt_search` is the only piece that talks to the public web endpoint. The
+//! other two deliberately go further: `yt_audio` resolves a stream URL that the
+//! loopback proxy re-serves with CORS headers so Web Audio can equalise it, and
+//! `yt_download` saves a file into the user's library. Both reach YouTube
+//! outside the official IFrame player, which is a terms-of-service grey area the
+//! user owns - this comment says so rather than pretending otherwise.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

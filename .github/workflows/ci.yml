@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-tests:
+    name: web tests (node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: recommend
+        run: node test/recommend.test.cjs
+      - name: shelf
+        run: node test/shelf.test.cjs
+      - name: wire
+        run: node test/wire.test.cjs
+      - name: repeat
+        run: node test/repeat.test.cjs
+      - name: embed
+        run: node test/embed.test.cjs
+
+  rust-core:
+    name: rust core
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - name: clippy
+        run: cargo clippy -p measured-core --all-targets
+      - name: test
+        run: cargo test -p measured-core
+
+  rust-desktop:
+    name: rust desktop (windows)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - name: check
+        run: cargo check -p measured-desktop

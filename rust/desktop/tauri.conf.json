@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Measure Player",
+  "productName": "MEASURED",
   "version": "2.0.1",
   "identifier": "com.measured.player",
   "build": {
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Measure Player",
+        "title": "MEASURED",
         "width": 1320,
         "height": 860,
         "minWidth": 880,
@@ -22,10 +22,20 @@
       }
     ],
     "security": {
-      "csp": null,
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob: https://i.ytimg.com https://*.ytimg.com https://*.googleusercontent.com; media-src 'self' asset: http://asset.localhost blob: http://127.0.0.1:* https://*.googlevideo.com; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* https://*.googlevideo.com https://*.youtube.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'",
       "assetProtocol": {
         "enable": true,
-        "scope": ["**"]
+        "scope": [
+          "$RESOURCE/**",
+          "$APPDATA/**",
+          "$CACHE/**",
+          "$AUDIO/**",
+          "$DOWNLOAD/**",
+          "$DOCUMENT/**",
+          "$DESKTOP/**",
+          "$HOME/songs/**",
+          "$HOME/Music/**"
+        ]
       }
     }
   },
@@ -33,7 +43,7 @@
     "active": true,
     "targets": ["nsis", "msi"],
     "resources": ["yt-dlp.exe"],
-      "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
     "windows": {
       "nsis": {
         "installMode": "currentUser"

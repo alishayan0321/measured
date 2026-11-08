@@ -179,11 +179,7 @@ pub fn scan_dir(dir: &Path, thumbs_dir: Option<&Path>) -> Library {
 
         let (artist, title, video_id) = parse_name(&name);
         let ext = ext_of(&name).unwrap_or_default();
-        let duration_ms = if crate::is_native(&name) {
-            decode::duration_ms(&entry.path()).unwrap_or(0)
-        } else {
-            decode::duration_ms(&entry.path()).unwrap_or(0)
-        };
+        let duration_ms = decode::duration_ms(&entry.path()).unwrap_or(0);
 
         bytes_total += meta.len();
         tracks.push(Track {

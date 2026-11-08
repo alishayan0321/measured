@@ -101,7 +101,7 @@ const api = {
           videoId: t.video_id || null,
           ext: (t.ext || '').toLowerCase(),
           bytes: t.bytes || 0,
-          mtime: t.duration_ms || 0,
+          mtime: t.mtime_ms || 0,
           dur: (t.duration_ms || 0) / 1000,
           added: !!t.added,
         }));
