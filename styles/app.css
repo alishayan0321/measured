@@ -1507,3 +1507,28 @@ html[data-theme="liquid"] body::after{ opacity:.055 !important; }
 .eq-bands{display:flex;gap:8px;align-items:flex-end;justify-content:space-between}
 .eq-band{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:10px;opacity:.75}
 .eq-band input[type=range]{writing-mode:vertical-lr;direction:rtl;width:22px;height:96px;accent-color:currentColor}
+
+/* ── dominant-colour bleed ────────────────────────────────────────────────
+   paintTint() publishes the current sleeve's average saturated hue as
+   --art-tint ("r g b"). The hero washes itself with it, so the room changes
+   when the record does. Liquid already tints from --art, so it gets the least.
+   The pseudo sits at z-index:-1 inside an isolated stacking context, which
+   puts it behind the hero's own content without touching a single child. */
+.hero{position:relative;isolation:isolate}
+.hero::before{
+  content:"";
+  position:absolute; inset:0; z-index:-1;
+  pointer-events:none;
+  border-radius:18px;
+  background:
+    radial-gradient(72% 58% at 22% 4%, rgb(var(--art-tint, 0 0 0) / var(--art-bleed, .10)), transparent 68%),
+    radial-gradient(58% 46% at 88% 96%, rgb(var(--art-tint, 0 0 0) / calc(var(--art-bleed, .10) * .6)), transparent 70%);
+  opacity:0;
+  transition:opacity .7s ease;
+}
+html[data-art-tint] .hero::before{opacity:1}
+[data-theme="dark"]{--art-bleed:.18}
+[data-theme="liquid"]{--art-bleed:.06}
+@media (prefers-reduced-transparency:reduce){.hero::before{display:none}}
+@media (prefers-reduced-motion:reduce){.hero::before{transition:none}}
+

@@ -10,6 +10,12 @@ const blocks = [];
 let m;
 while ((m = re.exec(html))) blocks.push({ start: m.index, end: m.index + m[0].length, css: m[1] });
 
+// Already extracted: refuse rather than overwrite styles/*.css with nothing.
+if (blocks.length === 0) {
+  console.log('no inline <style> blocks left - nothing to do');
+  process.exit(0);
+}
+
 const LINK = '<link rel="stylesheet" href="deck/vinyl.css">';
 const linkIdx = html.indexOf(LINK);
 if (linkIdx < 0) throw new Error('vinyl link not found');

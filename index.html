@@ -928,6 +928,51 @@
       const el = document.querySelector(sel);
       if (el) el.style.setProperty('--art', url);
     }
+    paintTint(t);
+  }
+
+  /* Dominant-colour bleed. The sleeve is drawn into a 32x32 canvas and the
+     saturated pixels are averaged, weighted by saturation and brightness so a
+     grey border or a black margin cannot drag the hue. The result lands in
+     --art-tint as "r g b" and the hero washes itself with it, which is what
+     makes the room change when the record does. Cheap: one decode per track,
+     and a stale decode is dropped by the sequence guard. */
+  let tintSeq = 0;
+  function paintTint(t) {
+    const root = document.documentElement;
+    const cover = t && t.cover;
+    const seq = ++tintSeq;
+    if (!cover) { root.removeAttribute('data-art-tint'); return; }
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      if (seq !== tintSeq) return;                 // a newer track won
+      try {
+        const N = 32;
+        const c = document.createElement('canvas');
+        c.width = c.height = N;
+        const g = c.getContext('2d', { willReadFrequently: true });
+        g.drawImage(img, 0, 0, N, N);
+        const d = g.getImageData(0, 0, N, N).data;
+        let r = 0, gr = 0, b = 0, w = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          const R = d[i], G = d[i + 1], B = d[i + 2];
+          const mx = Math.max(R, G, B), mn = Math.min(R, G, B);
+          const sat = mx === 0 ? 0 : (mx - mn) / mx;
+          if (sat < 0.15) continue;                // greys carry no hue
+          const weight = sat * (mx / 255);
+          r += R * weight; gr += G * weight; b += B * weight; w += weight;
+        }
+        if (w < 0.5) { root.removeAttribute('data-art-tint'); return; }
+        root.style.setProperty('--art-tint',
+          Math.round(r / w) + ' ' + Math.round(gr / w) + ' ' + Math.round(b / w));
+        root.setAttribute('data-art-tint', '');
+      } catch (e) {
+        root.removeAttribute('data-art-tint');     // tainted canvas: no bleed
+      }
+    };
+    img.onerror = () => { if (seq === tintSeq) root.removeAttribute('data-art-tint'); };
+    img.src = cover;
   }
   function pushMedia(force) {
     try { syncNow(); } catch (e) {}
