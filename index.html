@@ -43,6 +43,7 @@
 <button class="lib-tab is-on" id="tab-lib" role="tab" aria-selected="true">Library</button>
 <button class="lib-tab" id="tab-yt" role="tab" aria-selected="false">Nowhere</button>
 <button class="lib-tab" id="tab-up" role="tab" aria-selected="false">Up next</button>
+<button class="lib-tab" id="tab-pl" role="tab" aria-selected="false">Playlists</button>
 </div>
 <div class="lib-list" id="list" role="listbox" aria-label="Track queue"></div>
 <div class="yt-pane" id="yt-pane" hidden>
@@ -62,6 +63,9 @@
 <div id="up-local"></div>
 <div class="up-h">From the web <span class="up-tag">30s</span></div>
 <div id="up-web"></div>
+</div>
+<div class="pl-pane" id="pl-pane" hidden>
+<div class="pl-cards" id="pl-cards"></div>
 </div>
     </section>
 
@@ -209,6 +213,11 @@
           <div class="track" id="vol" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="70" aria-valuetext="70%"><div class="rail"></div><div class="fill" id="vfill"></div><div class="head" id="vhead"></div></div>
         </div>
         <div class="hint" id="hint-keys" aria-label="Shortcuts: space play or pause, left and right seek, up and down volume, n and p next and previous, slash to filter"><kbd>space</kbd><kbd>â†â†’</kbd><kbd>â†‘â†“</kbd><kbd>n/p</kbd><kbd>/</kbd></div>
+      </div>
+
+      <div class="queue-strip" id="queue-strip" hidden aria-label="Up next preview">
+        <div class="queue-h"><span class="kicker">Up next</span></div>
+        <div class="queue-items" id="queue-items"></div>
       </div>
     </section>
   </main>
@@ -874,6 +883,7 @@
     audio.src = proxied(url); audio.load();
     if (String(url).indexOf('asset.localhost') !== -1) tapSource(url); else tapStop();
     if (autoplay) play(); else icon(false);
+    renderQueueStrip();
   }
 
   function paint(t) {
@@ -1198,9 +1208,33 @@
   $('play').onclick = toggle;
   $('prev').onclick = () => step(-1);
   $('next').onclick = () => step(1);
+  /* Field-scoped filter. "artist:radiohead plays:0" narrows by field; a bare
+     word still matches title+artist, so the old behaviour is unchanged. */
+  function smartMatch(t, q, per) {
+    const hay = ((t.title || '') + ' ' + (t.artist || '')).toLowerCase();
+    const s = per && per[t.file];
+    const toks = q.split(/\s+/).filter(Boolean);
+    for (let i = 0; i < toks.length; i++) {
+      const tok = toks[i];
+      const m = tok.match(/^(artist|title|plays|skips):(.+)$/);
+      if (!m) { if (!hay.includes(tok)) return false; continue; }
+      const f = m[1], v = m[2];
+      if (f === 'artist') { if (!String(t.artist || '').toLowerCase().includes(v)) return false; }
+      else if (f === 'title') { if (!String(t.title || '').toLowerCase().includes(v)) return false; }
+      else {
+        const n = s ? (s[f] || 0) : 0;
+        if (v.charAt(0) === '>') { if (!(n > Number(v.slice(1)))) return false; }
+        else if (v.charAt(0) === '<') { if (!(n < Number(v.slice(1)))) return false; }
+        else if (n !== Number(v)) return false;
+      }
+    }
+    return true;
+  }
+
   $('q').addEventListener('input', (e) => {
     const q = e.target.value.trim().toLowerCase();
-    VIEW = !q ? TRACKS.slice() : TRACKS.filter((t) => (t.title + ' ' + t.artist).toLowerCase().includes(q));
+    const per = playlistPer();
+    VIEW = !q ? TRACKS.slice() : TRACKS.filter((t) => smartMatch(t, q, per));
     const keepFile = curFile || (VIEW[cur] && VIEW[cur].file) || '';
     cur = keepFile ? VIEW.findIndex((t) => t.file === keepFile) : -1;
     renderList();
@@ -2173,7 +2207,9 @@ window.__ytSearch = search;
     const tabLib = document.getElementById('tab-lib');
     const tabYt = document.getElementById('tab-yt');
     const tabUp = document.getElementById('tab-up');
+    const tabPl = document.getElementById('tab-pl');
     const pane = document.getElementById('up-pane');
+    const plPane = document.getElementById('pl-pane');
     const listEl = document.getElementById('list');
     const ytPane = document.getElementById('yt-pane');
     const localEl = document.getElementById('up-local');
@@ -2183,7 +2219,7 @@ window.__ytSearch = search;
     let webSeq = 0;
 
     function paintTabs(which) {
-      [['lib', tabLib], ['yt', tabYt], ['up', tabUp]].forEach(function (pair) {
+      [['lib', tabLib], ['yt', tabYt], ['up', tabUp], ['pl', tabPl]].forEach(function (pair) {
         const key = pair[0], el = pair[1];
         if (!el) return;
         const on = key === which;
@@ -2193,7 +2229,9 @@ window.__ytSearch = search;
       if (listEl) listEl.hidden = which !== 'lib';
       if (ytPane) ytPane.hidden = which !== 'yt';
       pane.hidden = which !== 'up';
+      if (plPane) plPane.hidden = which !== 'pl';
       if (which === 'up') refresh();
+      if (which === 'pl') renderPlaylists();
     }
 
     function localRow(r) {
@@ -2381,6 +2419,7 @@ window.__ytSearch = search;
     function refresh() { renderLocal(); renderWeb(); }
 
     tabUp.addEventListener('click', function () { paintTabs('up'); });
+    if (tabPl) tabPl.addEventListener('click', function () { paintTabs('pl'); });
     if (tabLib) tabLib.addEventListener('click', function () { paintTabs('lib'); });
     if (tabYt) tabYt.addEventListener('click', function () {
       if (pane) pane.hidden = true;
@@ -2391,6 +2430,111 @@ window.__ytSearch = search;
     if (audioEl) audioEl.addEventListener('ended', function () { if (pane && !pane.hidden) renderLocal(); });
   } catch (e) { /* the panel is optional: never break the player for it */ }
 })();
+
+/* ---- Playlists: three smart lists read straight off the ranker's own log ----
+   RANK.stats() returns { per: { file: { plays, skips, ema, lastAt, ... } } },
+   so these need no extra storage and no user setup. A track with no entry has
+   simply never been played. */
+const PLAYLISTS = [
+  { id: 'fresh', name: 'Fresh', desc: 'Never played.' },
+  { id: 'forgotten', name: 'Forgotten', desc: 'Played once or twice, then left alone for 90 days.' },
+  { id: 'rotation', name: 'Heavy rotation', desc: 'Ten or more plays, mostly finished.' },
+];
+
+function playlistPer() {
+  try {
+    if (typeof RANK === 'undefined' || !RANK || typeof RANK.stats !== 'function') return null;
+    const s = RANK.stats();
+    return s && s.per ? s.per : null;
+  } catch (e) { return null; }
+}
+
+function playlistTracks(id, per) {
+  const DAY = 86400000;
+  const now = Date.now();
+  return TRACKS.filter(function (t) {
+    const s = per && per[t.file];
+    if (id === 'fresh') return !s || !s.plays;
+    if (id === 'forgotten') return s && s.plays > 0 && s.plays < 3 && (!s.lastAt || now - s.lastAt > 90 * DAY);
+    if (id === 'rotation') return s && s.plays >= 10 && s.ema != null && s.ema > 0.7;
+    return false;
+  });
+}
+
+function renderPlaylists() {
+  const box = document.getElementById('pl-cards');
+  if (!box) return;
+  box.textContent = '';
+  const per = playlistPer();
+  PLAYLISTS.forEach(function (pl) {
+    const rows = playlistTracks(pl.id, per);
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'pl-card';
+    const h = document.createElement('h3');
+    h.textContent = pl.name;
+    const p = document.createElement('p');
+    p.textContent = pl.desc + ' ';
+    const n = document.createElement('strong');
+    n.textContent = rows.length + (rows.length === 1 ? ' track' : ' tracks');
+    p.appendChild(n);
+    card.appendChild(h);
+    card.appendChild(p);
+    card.addEventListener('click', function () {
+      if (!rows.length) return;
+      VIEW = rows.slice();
+      cur = -1;
+      renderList();
+      const tabLib = document.getElementById('tab-lib');
+      if (tabLib) tabLib.click();
+    });
+    box.appendChild(card);
+  });
+}
+
+/* ---- Queue strip: the ranker's next three picks, always on screen ---- */
+function renderQueueStrip() {
+  const strip = document.getElementById('queue-strip');
+  const box = document.getElementById('queue-items');
+  if (!strip || !box) return;
+  let rows = [];
+  try {
+    if (typeof RANK !== 'undefined' && RANK && typeof RANK.rank === 'function' && typeof rankLib === 'function') {
+      rows = RANK.rank(rankLib(), 3) || [];
+    }
+  } catch (e) { rows = []; }
+  box.textContent = '';
+  if (!rows.length) { strip.hidden = true; return; }
+  strip.hidden = false;
+  rows.forEach(function (r) {
+    const t = VIEW[r.index] || {};
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'queue-item';
+    const art = document.createElement('span');
+    art.className = 'qi-art';
+    if (t.cover) {
+      const img = document.createElement('img');
+      img.alt = '';
+      img.loading = 'lazy';
+      img.src = t.cover;
+      art.appendChild(img);
+    }
+    const txt = document.createElement('span');
+    txt.className = 'qi-t';
+    const bb = document.createElement('b');
+    bb.textContent = (typeof clean === 'function' ? clean(r.title || t.title) : (r.title || t.title)) || '(untitled)';
+    const ii = document.createElement('i');
+    ii.textContent = r.artist || t.artist || '';
+    txt.appendChild(bb);
+    txt.appendChild(ii);
+    b.appendChild(art);
+    b.appendChild(txt);
+    b.setAttribute('aria-label', 'Play next: ' + bb.textContent);
+    b.addEventListener('click', function () { try { select(r.index, true); } catch (e) {} });
+    box.appendChild(b);
+  });
+}
 
 })();
 

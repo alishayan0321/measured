@@ -1532,3 +1532,36 @@ html[data-art-tint] .hero::before{opacity:1}
 @media (prefers-reduced-transparency:reduce){.hero::before{display:none}}
 @media (prefers-reduced-motion:reduce){.hero::before{transition:none}}
 
+/* ── queue strip + smart playlists ─────────────────────────────────────── */
+.queue-strip{margin-top:10px;padding-top:8px;border-top:1px solid var(--hair)}
+.queue-h{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.queue-items{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+.queue-item{
+  display:flex;align-items:center;gap:9px;padding:5px 10px 5px 5px;
+  border:1px solid var(--hair);border-radius:10px;background:var(--raised-sm);
+  min-width:0;max-width:230px;flex:0 0 auto;cursor:pointer;text-align:left;
+  color:inherit;font:inherit;transition:transform .15s ease,border-color .15s ease;
+}
+.queue-item:hover{transform:translateY(-1px);border-color:var(--accent-soft)}
+.queue-item:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.qi-art{width:32px;height:32px;border-radius:7px;flex:0 0 auto;overflow:hidden;background:var(--panel-2)}
+.qi-art img{width:100%;height:100%;object-fit:cover;display:block}
+.qi-t{min-width:0;display:flex;flex-direction:column;gap:1px}
+.qi-t b{font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qi-t i{font-style:normal;font-size:10.5px;color:var(--graphite);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.pl-pane{padding:14px 2px}
+.pl-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.pl-card{
+  display:block;text-align:left;padding:14px 15px;border:1px solid var(--hair);
+  border-radius:12px;background:var(--raised-sm);color:inherit;font:inherit;cursor:pointer;
+  transition:transform .15s ease,border-color .15s ease;
+}
+.pl-card:hover{transform:translateY(-1px);border-color:var(--accent-soft)}
+.pl-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.pl-card h3{margin:0 0 4px;font-family:var(--serif,Georgia,serif);font-size:14px;font-weight:600}
+.pl-card p{margin:0;font-size:11px;line-height:1.45;color:var(--graphite)}
+.pl-card strong{color:var(--ink);font-weight:600}
+@media (prefers-reduced-motion:reduce){.queue-item,.pl-card{transition:none}}
+
+
