@@ -42,13 +42,15 @@ fn platform_config(app: &AppHandle) -> PlatformConfig<'static> {
     // SMTC has to be bound to a real HWND; without one Windows refuses to show
     // the player at all, so a missing handle is reported as `None` and `new`
     // fails cleanly rather than panicking.
-    let hwnd = app
-        .get_webview_window("main")
-        .and_then(|w| w.window_handle().ok())
-        .and_then(|h| match h.as_raw() {
-            RawWindowHandle::Win32(w) => Some(w.hwnd.get() as *mut std::ffi::c_void),
+    // The handle borrows the window, so the raw pointer has to be extracted
+    // inside the closure; returning the handle itself would not outlive `w`.
+    let hwnd = app.get_webview_window("main").and_then(|w| {
+        let handle = w.window_handle().ok()?;
+        match handle.as_raw() {
+            RawWindowHandle::Win32(h) => Some(h.hwnd.get() as *mut std::ffi::c_void),
             _ => None,
-        });
+        }
+    });
     PlatformConfig {
         dbus_name: "measured",
         display_name: "MEASURED",
