@@ -209,10 +209,12 @@
           <div class="seek" id="seek" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" aria-valuetext="0:00 of 0:00"><div class="rail"></div><div class="fill" id="sfill"></div><div class="head" id="shead"></div></div>
         </div>
         <div class="vol">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" opacity=".7"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 010 7" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
+          <button class="mute" id="mute" aria-label="Mute" aria-pressed="false">
+            <svg id="mute-ico" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 010 7" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
+          </button>
           <div class="track" id="vol" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="70" aria-valuetext="70%"><div class="rail"></div><div class="fill" id="vfill"></div><div class="head" id="vhead"></div></div>
         </div>
-        <div class="hint" id="hint-keys" aria-label="Shortcuts: space play or pause, left and right seek, up and down volume, n and p next and previous, slash to filter"><kbd>space</kbd><kbd>←→</kbd><kbd>↑↓</kbd><kbd>n/p</kbd><kbd>/</kbd></div>
+        <div class="hint" id="hint-keys" aria-label="Shortcuts: space play or pause, left and right seek, up and down volume, n and p next and previous, b A/B the loudness match, m mute, slash to filter"><kbd>space</kbd><kbd>←→</kbd><kbd>↑↓</kbd><kbd>n/p</kbd><kbd>b</kbd><kbd>m</kbd><kbd>/</kbd></div>
       </div>
 
       <div class="queue-strip" id="queue-strip" hidden aria-label="Up next preview">
@@ -283,6 +285,22 @@
         <label class="eq-band"><input type="range" id="eq-b3" min="-12" max="12" step="1" value="0" aria-label="3.6 kHz"><span>3.6k</span></label>
         <label class="eq-band"><input type="range" id="eq-b4" min="-12" max="12" step="1" value="0" aria-label="14 kHz"><span>14k</span></label>
       </div>
+    </section>
+
+    <!-- The transport hint is hidden below 1180px, which is most window sizes on
+         a laptop. Settings is reachable at every width, so the list lives here. -->
+    <section class="sheet-s" id="sec-keys">
+      <div class="lab">Keyboard</div>
+      <div class="kv"><span>Play / pause</span><b>Space</b></div>
+      <div class="kv"><span>Seek 5 s</span><b>← →</b></div>
+      <div class="kv"><span>Seek 30 s</span><b>PgUp PgDn</b></div>
+      <div class="kv"><span>Volume</span><b>↑ ↓</b></div>
+      <div class="kv"><span>Next / previous</span><b>N P</b></div>
+      <div class="kv"><span>Restart the track</span><b>P</b></div>
+      <div class="kv"><span>Mute</span><b>M</b></div>
+      <div class="kv"><span>A/B the loudness match</span><b>B</b></div>
+      <div class="kv"><span>Jump to search</span><b>/</b></div>
+      <div class="kv"><span>Close the card</span><b>Esc</b></div>
     </section>
 
     <section class="sheet-s" id="sec-storage" hidden>
@@ -504,16 +522,44 @@
 
   const cv = $('scope');
   const g = cv.getContext('2d');
-  const LS = { vol: 'measured.vol', track: 'measured.file' };
+  const LS = { vol: 'measured.vol', track: 'measured.file', pos: 'measured.pos', mute: 'measured.mute' };
   let curFile = '';
   let lastNativeFile = '';
   let seekHold = 0;
+  /* Where the last listen stopped, waiting for the matching track to load. */
+  let pendingResume = null;
+  let savedAt = 0;
   const annNode = () => $('sr-status');
   let annTimer = 0;
   function announce(msg) {
     const el = annNode(); if (!el) return;
     clearTimeout(annTimer);
-    annTimer = setTimeout(() => { el.textContent = msg; }, 80);
+    annTimer = setTimeout(() => { el.textContent = msg; likeToast(msg); }, 80);
+  }
+
+  /* ---- where you were ------------------------------------------------------
+     Volume and the last file always survived a relaunch; the position did not,
+     so every session restarted the same song at 0:00. The pair is written from
+     timeupdate on a slow timer and once more on the way out — PlayerAPI.set is a
+     localStorage write on every platform, so this is cheap, but it still should
+     not run per second. A position inside the last three seconds is stored as 0:
+     resuming one second before the end just skips the track you asked for. */
+  function resumeFor(file) {
+    if (!file) return null;
+    try {
+      const r = JSON.parse(PlayerAPI.get(LS.pos, '') || 'null');
+      if (r && r.file === file && Number.isFinite(r.pos) && r.pos > 3) return r;
+    } catch (e) {}
+    return null;
+  }
+  function savePos(force) {
+    if (!curFile || !audio.duration) return;
+    const now = Date.now();
+    if (!force && now - savedAt < 10000) return;
+    savedAt = now;
+    const d = audio.duration || 0;
+    const at = d && d - audio.currentTime < 3 ? 0 : audio.currentTime;
+    try { PlayerAPI.set(LS.pos, JSON.stringify({ file: curFile, pos: Math.round(at * 10) / 10 })); } catch (e) {}
   }
 
   let TRACKS = [], VIEW = [], cur = -1, playing = false, median = null;
@@ -558,6 +604,7 @@
   let STATS = {};
   let analyser = null, freq = null, ac = null;
   let eqPost = null;                       // loudness gain on the EQ path (see eqBuild)
+  let loudTarget = 1, abRaw = false;       // last computed gain + A/B bypass (see setLoudnessGain)
   let analysisEl = null;
   let liveSmooth = [], livePeak = [];
 
@@ -591,8 +638,10 @@
     const now = eqCtx.currentTime;
     eqPost.gain.cancelScheduledValues(now);
     eqPost.gain.setValueAtTime(eqPost.gain.value, now);
+    /* Remember the target even while bypassed, so toggling back is instant. */
+    loudTarget = g;
     /* 20 ms: fast skips get a short fade, which is intended, not a glitch. */
-    eqPost.gain.setTargetAtTime(g, now, 0.02);
+    eqPost.gain.setTargetAtTime(abRaw ? 1 : g, now, 0.02);
   }
 
   /* The live EQ must never tap the element people are listening to.
@@ -741,6 +790,10 @@
             RANK = null;
             try { PlayerAPI.set('measured.rec.boot', JSON.stringify({ wire: true, rank: false, err: String(e && e.message || e), at: Date.now() })); } catch (e2) {}
           }
+          /* The ranker is built after select() has already drawn the strip, so
+             without this the "Up next" row stays hidden until the first track
+             change — the feature is there, you just never see it. */
+          try { renderQueueStrip(); } catch (e3) {}
         })
         .catch((e) => {
           RANK = null;
@@ -780,9 +833,16 @@
 
     renderList();
     setVol(clamp(Number(PlayerAPI.get(LS.vol, '0.7')), 0, 1));
+    syncMute(PlayerAPI.get(LS.mute, '0') === '1');
+    pendingResume = null;
     const lastFile = PlayerAPI.get(LS.track, '');
     let startIdx = lastFile ? VIEW.findIndex((t) => t.file === lastFile) : -1;
-    if (startIdx < 0 || !VIEW[startIdx].lufs || !VIEW[startIdx].bands || !VIEW[startIdx].bands.length) {
+    if (startIdx >= 0) {
+      /* A remembered file wins even without a fingerprint. The measured-first
+         jump below is for a cold start, not a licence to overrule the track you
+         were listening to a minute ago. */
+      pendingResume = resumeFor(lastFile);
+    } else {
       const full = VIEW.findIndex((t) => t.bands && t.bands.length && t.lufs);
       startIdx = full >= 0 ? full : 0;
     }
@@ -794,6 +854,8 @@
     if (keepPlayback && prevFile) {
       const idx = VIEW.findIndex(function (t) { return t.file === prevFile; });
       if (idx >= 0) {
+        /* This path keeps the live position, so the stored one must not win. */
+        pendingResume = null;
         select(idx, false);
         try { audio.currentTime = prevTime; } catch (e) {}
         if (wasPlaying) { try { Promise.resolve(play()).catch(function () {}); } catch (e) {} }
@@ -990,7 +1052,7 @@
     if (t.bands.length) chips.push('<span class="chip acc">measured</span>');
     $('chips').innerHTML = chips.join('');
     $('r-lufs').innerHTML = t.lufs ? t.lufs.toFixed(1) + '<s>LUFS</s>' : '—';
-    $('r-tp').innerHTML = t.tp ? t.tp.toFixed(1) + '<s>dBTP</s>' : '—';
+    $('r-tp').innerHTML = Number.isFinite(t.tp) ? t.tp.toFixed(1) + '<s>dBTP</s>' : '—';
     $('r-crest').innerHTML = t.crest ? t.crest.toFixed(1) + '<s>dB</s>' : '—';
     $('r-roll').innerHTML = t.rolloff ? (t.rolloff / 1000).toFixed(1) + '<s>kHz</s>' : '—';
     $('r-src').innerHTML = t.kbps ? Math.round(t.kbps) + '<s>kbps</s>' : (t.ext || '—').toUpperCase();
@@ -1114,7 +1176,7 @@
     tapPlay();
     audio.play().then(() => { playing = true; icon(true); }).catch(() => { icon(false); });
   }
-  const pause = () => { audio.pause(); playing = false; icon(false); tapPause(); };
+  const pause = () => { audio.pause(); playing = false; icon(false); tapPause(); savePos(true); };
   const toggle = () => (audio.paused ? play() : pause());
   const icon = (p) => {
     $('ico').innerHTML = p ? '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>' : '<path d="M8 5l11 7-11 7z"/>';
@@ -1124,8 +1186,13 @@
     pushMedia(true);
     pushSmtc(true);
   };
+  /* Previous means "start this song again" while you are into it, and "go back"
+     only near the top — the convention every other player has, and the only way
+     to restart a track from the transport at all. Same three-second threshold
+     most players use, so the muscle memory carries over. */
   function step(d) {
     if (!VIEW.length) return;
+    if (d < 0 && (audio.currentTime || 0) > 3) { seekTo(0); return; }
     let i = cur + d;
     if (i < 0) i = VIEW.length - 1;
     if (i >= VIEW.length) i = 0;
@@ -1158,6 +1225,7 @@
   audio.addEventListener('timeupdate', () => {
     const d = audio.duration || 0, c = audio.currentTime || 0;
     if (RANK) { try { RANK.tick(c); } catch (e) {} }
+    if (!audio.paused) savePos(false);
     $('time').textContent = fmt(c) + ' / ' + fmt(d);
     const p = d ? (c / d) * 100 : 0;
     $('sfill').style.width = p + '%'; $('shead').style.left = p + '%';
@@ -1178,10 +1246,20 @@
   });
   audio.addEventListener('loadedmetadata', () => {
     const d = audio.duration || 0;
-    $('time').textContent = '0:00 / ' + fmt(d);
+    /* Pick the stored position up here rather than in select(): the element has
+       no duration until metadata lands, and currentTime before that is a no-op.
+       One-shot, keyed to the file it was stored for — this event also fires for
+       the transcode rescue and for a library reload. */
+    let at = 0;
+    if (pendingResume && pendingResume.file === curFile) {
+      at = Math.min(pendingResume.pos, Math.max(0, d - 3));
+      pendingResume = null;
+      if (at > 0) { try { audio.currentTime = at; } catch (e) { at = 0; } }
+    }
+    $('time').textContent = fmt(at) + ' / ' + fmt(d);
     const sk = $('seek');
     sk.setAttribute('aria-valuemax', String(Math.round(d)));
-    sk.setAttribute('aria-valuetext', '0:00 of ' + fmt(d));
+    sk.setAttribute('aria-valuetext', fmt(at) + ' of ' + fmt(d));
   });
   audio.addEventListener('error', async () => {
     const t = VIEW[cur];
@@ -1252,6 +1330,9 @@
   async function onlineNext(depth) {
     depth = depth || 0;
     if (!SHELF) { step(1); return; }
+    /* Offline, the refill below cannot succeed: it would stall the listen for up
+       to six seconds and then announce that nothing is left. Step instead. */
+    if (navigator.onLine === false) { step(1); return; }
     let cand = SHELF.next();
     if (!cand) {
       try { await SHELF.refill(shelfSeeds()); } catch (e) {}
@@ -1276,12 +1357,36 @@
     let pick = null;
     try { pick = RANK ? RANK.nextIndex(rankLib()) : null; } catch (e) { pick = null; }
     if (Number.isInteger(pick) && VIEW[pick] && pick !== cur) { select(pick, true); return; }
-    /* Nothing local left worth playing: go online rather than loop the same
-       file forever. */
+    /* The ranker stays quiet until it has been told enough about the library.
+       Walking out to a streamed preview on the very first finished track is the
+       wrong first impression for a player whose promise is the local library, so
+       an unknown listener simply steps. The shelf keeps its turn once the ranker
+       is actually making a choice — or when it has run out of fresh local picks,
+       which is the case it was built for. */
+    let cold = true;
+    try {
+      const r = RANK ? RANK.rank(rankLib(), 1) : null;
+      cold = !r || !r.length || !!r[0].cold;
+    } catch (e) { cold = true; }
+    if (cold && VIEW.length) { select((cur + 1) % VIEW.length, true); return; }
     onlineNext(0);
   });
 
-  window.addEventListener('beforeunload', () => { if (RANK) { try { RANK.save(); } catch (e) {} } });
+  window.addEventListener('beforeunload', () => { savePos(true); if (RANK) { try { RANK.save(); } catch (e) {} } });
+
+  /* One place decides whether a seek arms the end-of-track guard. Dragging to the
+     far right leaves a fraction of a second, so the element's own 'ended' lands
+     inside the 500 ms window the handler below watches for and gets swallowed —
+     the track never advanced, the pause icon stayed up, and the player looked
+     frozen. A landing point inside the last 600 ms is a scrub-to-the-end and must
+     not arm the guard. */
+  function seekTo(t, dur) {
+    const d = dur || audio.duration || 0;
+    if (!d) return;
+    const at = clamp(t, 0, d * 0.999);
+    audio.currentTime = at;
+    seekHold = d - at < 0.6 ? 0 : Date.now();
+  }
 
   function bindDrag(el, set) {
     let on = false;
@@ -1292,8 +1397,7 @@
     el.addEventListener('pointercancel', () => { on = false; });
   }
   bindDrag($('seek'), (p) => {
-    seekHold = Date.now();
-    if (audio.duration) audio.currentTime = Math.min(p, 0.999) * audio.duration;
+    seekTo(p * (audio.duration || 0));
     $('sfill').style.width = (p * 100) + '%'; $('shead').style.left = (p * 100) + '%';
   });
   bindDrag($('vol'), setVol);
@@ -1301,10 +1405,10 @@
   $('seek').addEventListener('keydown', (e) => {
     const d = audio.duration; if (!d) return;
     const k = e.key;
-    if (k === 'Home') { e.preventDefault(); audio.currentTime = 0; seekHold = Date.now(); return; }
-    if (k === 'End') { e.preventDefault(); audio.currentTime = d * 0.999; seekHold = Date.now(); return; }
+    if (k === 'Home') { e.preventDefault(); seekTo(0); return; }
+    if (k === 'End') { e.preventDefault(); seekTo(d); return; }
     let step2 = k === 'ArrowRight' ? 5 : k === 'ArrowLeft' ? -5 : k === 'PageUp' ? 30 : k === 'PageDown' ? -30 : null;
-    if (step2 !== null) { e.preventDefault(); seekHold = Date.now(); audio.currentTime = clamp(audio.currentTime + step2, 0, d * 0.999); }
+    if (step2 !== null) { e.preventDefault(); seekTo(audio.currentTime + step2); }
   });
   $('vol').addEventListener('keydown', (e) => {
     const k = e.key;
@@ -1313,6 +1417,28 @@
     const d2 = (k === 'ArrowRight' || k === 'ArrowUp') ? 0.05 : (k === 'ArrowLeft' || k === 'ArrowDown') ? -0.05 : null;
     if (d2 !== null) { e.preventDefault(); setVol(clamp(audio.volume + d2, 0, 1)); }
   });
+  /* Mute used to exist only inside the now-playing card, and it forgot itself on
+     the next launch. One owner now: the transport button, the m key, the card's
+     button and the volume slider all go through here, so the two icons can never
+     disagree. */
+  function syncMute(on) {
+    audio.muted = !!on;
+    try { PlayerAPI.set(LS.mute, on ? '1' : '0'); } catch (e) {}
+    const b = $('mute');
+    if (b) {
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.setAttribute('aria-label', on ? 'Unmute' : 'Mute');
+    }
+    const ico = $('mute-ico');
+    if (ico) {
+      ico.innerHTML = on
+        ? '<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 9l4.5 6M21 9l-4.5 6" stroke="currentColor" stroke-width="1.6" fill="none"/>'
+        : '<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 010 7" stroke="currentColor" stroke-width="1.6" fill="none"/>';
+    }
+    if (npOpen()) syncNow();
+  }
+  const toggleMute = () => syncMute(!audio.muted);
+
   function setVol(v) {
     audio.volume = v;
     $('vfill').style.width = (v * 100) + '%'; $('vhead').style.left = (v * 100) + '%';
@@ -1320,11 +1446,15 @@
     const vv = $('vol');
     vv.setAttribute('aria-valuenow', String(Math.round(v * 100)));
     vv.setAttribute('aria-valuetext', Math.round(v * 100) + '%');
+    /* Raising the slider while muted and hearing nothing reads as a broken
+       player, so a deliberate volume change is also an unmute. */
+    if (v > 0 && audio.muted) syncMute(false);
   }
 
   $('play').onclick = toggle;
   $('prev').onclick = () => step(-1);
   $('next').onclick = () => step(1);
+  $('mute').onclick = toggleMute;
   /* Field-scoped filter. "artist:radiohead plays:0" narrows by field; a bare
      word still matches title+artist, so the old behaviour is unchanged. */
   function smartMatch(t, q, per) {
@@ -1370,6 +1500,18 @@
     else if (e.key === 'ArrowDown') { e.preventDefault(); setVol(clamp(audio.volume - 0.05, 0, 1)); }
     else if (e.key === 'n' || e.key === 'N') step(1);
     else if (e.key === 'p' || e.key === 'P') step(-1);
+    else if (e.key === 'b' || e.key === 'B') {
+      /* A/B the loudness match: bypassing is a gain of 1, so it is one ramp, no
+         re-analysis. eqCtx only exists once the EQ graph was built on play. */
+      if (!eqPost || !eqCtx) { announce('A/B needs the EQ chain — play a track first.'); return; }
+      abRaw = !abRaw;
+      const t = eqCtx.currentTime;
+      eqPost.gain.cancelScheduledValues(t);
+      eqPost.gain.setValueAtTime(eqPost.gain.value, t);
+      eqPost.gain.setTargetAtTime(abRaw ? 1 : loudTarget, t, 0.008);
+      announce(abRaw ? 'A/B: raw' : 'A/B: loudness matched');
+    }
+    else if (e.key === 'm' || e.key === 'M') toggleMute();
     else if (e.key === '/') { e.preventDefault(); $('q').focus(); }
   });
   if ('mediaSession' in navigator) {
@@ -1769,11 +1911,10 @@
   $('np-prev').addEventListener('click', () => step(-1));
   $('np-next').addEventListener('click', () => step(1));
   $('np-toggle').addEventListener('click', () => toggle());
-  $('np-mute').addEventListener('click', () => { audio.muted = !audio.muted; syncNow(); });
+  $('np-mute').addEventListener('click', () => toggleMute());
   bindDrag($('np-rail'), (p) => {
-    seekHold = Date.now();
     const d = audio.duration || (VIEW[cur] && VIEW[cur].dur) || 0;
-    if (d) audio.currentTime = Math.min(p, 0.999) * d;
+    if (d) seekTo(p * d, d);
     syncNow();
   });
   $('np-rail').addEventListener('keydown', (e) => {
@@ -1781,8 +1922,8 @@
     const k = e.key;
     const delta = k === 'ArrowRight' ? 5 : k === 'ArrowLeft' ? -5 : k === 'PageUp' ? 30 : k === 'PageDown' ? -30 : null;
     if (delta === null) return;
-    e.preventDefault(); seekHold = Date.now();
-    audio.currentTime = clamp(audio.currentTime + delta, 0, d * 0.999);
+    e.preventDefault();
+    seekTo(audio.currentTime + delta, d);
     syncNow();
   });
   document.addEventListener('keydown', (e) => {
@@ -2621,6 +2762,19 @@ function renderQueueStrip() {
       rows = RANK.rank(rankLib(), 3) || [];
     }
   } catch (e) { rows = []; }
+  /* A cold library gives the ranker no opinion to express, so rank() lists from
+     the top of the view — which is not where "next" goes. Show the three rows
+     that n and the end of a track will actually reach instead. The strip is a
+     promise, not decoration. */
+  if (rows.length && rows.every(function (r) { return r.cold; }) && VIEW.length > 1) {
+    rows = [];
+    const base = cur < 0 ? -1 : cur;
+    for (let k = 1; k <= 3 && k < VIEW.length; k++) {
+      const i = (base + k) % VIEW.length;
+      const t = VIEW[i] || {};
+      rows.push({ index: i, file: t.file, title: t.title, artist: t.artist, score: 0, cold: true });
+    }
+  }
   box.textContent = '';
   if (!rows.length) { strip.hidden = true; return; }
   strip.hidden = false;

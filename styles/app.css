@@ -1592,3 +1592,23 @@ html[data-art-tint] .hero::before{opacity:1}
   .vol .track .rail,.vol .track .fill,.vol .track .head{transition:none}
 }
 
+/* ── MUTE ─────────────────────────────────────────────────────────────────────
+   The speaker was a decorative <svg> with no handler: the only way to mute was
+   to open the now-playing card. It is a real button now, so it inherits the same
+   pointer feedback as the rails — a size step, not a colour change, and the
+   pressed state reads through --accent so all three themes get it for free. */
+.vol .mute{
+  width:22px;height:22px;padding:0;border:0;border-radius:999px;
+  display:flex;align-items:center;justify-content:center;
+  background:none;color:inherit;cursor:pointer;
+  opacity:.62;transition:opacity .12s ease,color .12s ease,transform .12s ease;
+}
+.vol .mute:hover{ opacity:1; transform:scale(1.14) }
+.vol .mute:active{ transform:scale(.96) }
+.vol .mute:focus-visible{ opacity:1; outline:2px solid var(--accent); outline-offset:2px }
+.vol .mute[aria-pressed="true"]{ color:var(--accent); opacity:1 }
+@media (prefers-reduced-motion:reduce){
+  .vol .mute{transition:none}
+  .vol .mute:hover,.vol .mute:active{transform:none}
+}
+
