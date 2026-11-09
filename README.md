@@ -1,24 +1,32 @@
 # MEASURED
 
-Local music player � one library, three shells: browser, Windows (Tauri + Rust), Android.
+Local music player — one library, three shells: browser, Windows (Tauri + Rust), Android.
 
 ## Download
 
-Everything is on the release page: the **Releases** page of this repository
+Everything is on the [Releases](../../releases/latest) page.
 
 | File | What it is |
 |---|---|
-| `Measure-2.0.0-Player-x64-setup.exe` | **Windows 10/11 x64 installer, 502 MB** � the one to take. Ships the app *and* all 148 songs, installs per-user, adds a desktop shortcut and an uninstaller. No admin rights. |
-| `Measure-Player.exe` | Windows x64 portable build, 25 MB � no installer, but it needs a `songs\` folder next to it (or Settings ? Add songs). |
-| `MEASURED.apk` | Android app, 482 MB, all 148 songs already inside. |
+| `MEASURED.exe` | **Windows 10/11 x64, 46 MB** — the one to take. Portable: no installer, no admin rights. Put it in a folder with a `songs\` directory beside it, or point it at a folder from Settings → Add songs. |
+| `MEASURED.apk` | Android 7.0+ (API 24), 483 MB — all 148 songs already inside. |
 
-The installer is 64-bit only: it says so in the filename, the wizard title and the uninstall entry, and it refuses to run on 32-bit Windows instead of half-installing. Your saved songs, likes and settings live in `%APPDATA%\com.measured.player`, so upgrading keeps them.
+The Windows build is x64 only and needs the WebView2 runtime, which ships with Windows 11 and current Windows 10. Your saved songs, likes and settings live in `%APPDATA%\com.measured.player`, so replacing the executable keeps them.
 
 On Android, tap the APK, allow your browser or file manager to *install unknown apps* (the normal Android prompt for any app not from the Play Store), then install.
-## What's new in 2.0.0
+
+## What's new in 2.0.2
+
+- **Mojibake repaired.** The desktop UI's text was UTF-8 read as CP-1252, so every separator, arrow, ellipsis and symbol arrived as garbage — `MEASURE Â· MK II`, `33â€¦ rpm`, `â€""` where a metric had no value. 111 corrupted sequences fixed across `index.html`, `styles/app.css` and `styles/base.css`.
+- **Styles and icon now ship with the desktop build.** The staging script copied only `index.html` into `dist/`, so the split stylesheets and the window icon never reached the package. `styles/` and `icon.png` are staged with it now.
+- Version strings bumped to 2.0.2. The executable reports `FileVersion 2.0.2`.
+
+Full history: [2.0.1](RELEASE-2.0.1.md) · [2.0.0](RELEASE-2.0.0.md).
+
+## The 2.0 feature set
 
 - **Rust core** (`rust/core`): decoding through [symphonia], tagging through [lofty], spectral fingerprints through [rustfft], cover thumbnails through [image]. One library, shared by the desktop shell and (via the same algorithms) the Android build.
-- **Tauri 2 desktop shell** (`rust/desktop`): 24.9 MB executable, **~200 ms** to a painted window, ~60 MB resident with 148 tracks loaded. The old Electron shell was 886 MB on disk and 1.5–3 s to first paint.
+- **Tauri 2 desktop shell** (`rust/desktop`): ~200 ms to a painted window, ~60 MB resident with 148 tracks loaded. The old Electron shell was 886 MB on disk and 1.5–3 s to first paint.
 - **No local HTTP server on desktop.** Audio is served through Tauri's asset protocol, which handles Range requests natively, so seeking is instant without a process sitting on a port.
 - **Nowhere** — an in-app YouTube surface: audio-first playback (webm/opus, low data), an optional video mode that swaps the platter for a player and stretches the layout, recent searches and history stored locally.
 - **Likes** — every local track starts liked; liking a streamed track downloads it into the added-songs folder and it becomes a local, liked track.
@@ -34,12 +42,14 @@ On Android, tap the APK, allow your browser or file manager to *install unknown 
 | Windows | Tauri 2 + Rust core | Bundled songs, native "Add songs" dialog, asset-protocol audio |
 | Android | WebView over `file:///android_asset` (min SDK 26) | Bundled songs, system file picker, media notification, on-device streaming |
 
-The interface is one file — `index.html` — in all three. `api.js` is the single bridge: on the web it fetches `/api/tracks`, on desktop it `invoke`s Rust commands, on Android it calls `AndroidBridge` through `@JavascriptInterface`.
+The interface is one page in all three. `index.html` carries the markup and the stage script; `styles/base.css` and `styles/app.css` carry the presentation, split out of the single file they used to live in. `api.js` is the single bridge: on the web it fetches `/api/tracks`, on desktop it `invoke`s Rust commands, on Android it calls `AndroidBridge` through `@JavascriptInterface`.
 
 ## Architecture
 
 ```
-index.html              the whole player: markup, styles, one inline script
+index.html              the player: markup and stage script
+styles/base.css         reset, tokens, type scale
+styles/app.css          the player chrome, deck and transport
 api.js                  one bridge for web / Tauri / Android
 lib/parse-name.js       "Artist - Title [videoId].webm" → fields, format tables
 lib/server.cjs          http server with Range support (web shell)
@@ -91,6 +101,8 @@ node build.cjs            # full build with songs
 node build.cjs --fast     # code-only build, skips the 465 MB of audio
 ```
 
+`rust/stage-ui.cjs` assembles the web assets into `rust/desktop/dist` before the desktop build; it stages `index.html`, `api.js`, `thumbs/`, `styles/` and `icon.png`.
+
 `android/build.cjs` is deliberately Gradle-free: `aapt2 compile/link`, `javac`, `d8`, a zip append for `classes.dex`, `zipalign`, `apksigner`. It resolves the SDK through `player/build` in this workspace — point `BUILD` at your own SDK if you fork this.
 
 ## Privacy and security
@@ -108,8 +120,8 @@ No software is "unhackable", and it would be dishonest to claim it. What is true
 | Artifact | Why | Size |
 | --- | --- | --- |
 | `songs/` | personal audio | 465 MB |
-| `MEASURED.apk` | built binary with songs baked in | 482 MB |
-| `MEASURED.exe` | built binary | 25 MB |
+| `MEASURED.apk` | built binary with songs baked in | 483 MB |
+| `MEASURED.exe` | built binary | 46 MB |
 | signing keystore | must stay private | — |
 
 Binaries are attached to the [releases](../../releases) instead.
