@@ -1635,3 +1635,16 @@ html[data-art-tint] .hero::before{opacity:1}
   html[data-theme="liquid"] .hero { padding-top: 6px; }
   html[data-theme="liquid"] .transport { padding-bottom: 12px; }
 }
+/* Liquid segmented control: the track is a capsule, so the selected button has
+   to be one too. With square corners the white fill was clipped by the track's
+   radius and read as a slab hanging off the right edge. */
+html[data-theme="liquid"] .seg {
+  padding: 3px; gap: 2px;
+  background: rgba(255, 255, 255, 0.42);
+  border-color: rgba(255, 255, 255, 0.75);
+}
+html[data-theme="liquid"] .seg-b { border-radius: 999px; border-left: 0 !important; }
+html[data-theme="liquid"] .seg-b[aria-checked="true"] {
+  background: #fff !important;
+  box-shadow: 0 1px 2px rgba(16, 26, 48, 0.16), inset 0 1px 0 #fff !important;
+}
