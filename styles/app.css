@@ -1612,3 +1612,13 @@ html[data-art-tint] .hero::before{opacity:1}
   .vol .mute:hover,.vol .mute:active{transform:none}
 }
 
+/* Short phones (360x760 after the WebView insets the status and gesture bars,
+   e.g. an 18:9 handset at 480dpi): the column was ~21px taller than the
+   viewport, so the transport card's bottom edge and the tail of the seek rail
+   sat below the screen. Measured on device: transport bottom 781 vs viewport
+   760. A 190px platter brings it to 745, which clears the rail and keeps the
+   rounded card corners whole. Deliberately theme-agnostic - the default theme
+   is light, and the earlier liquid-only rule never matched. */
+@media (max-width: 760px) and (max-height: 820px) {
+  .deck .stage { width: 190px !important; height: 190px !important; }
+}
