@@ -445,6 +445,10 @@
            can never reach the speakers. */
         eqDead = true;
       } else {
+        /* analyser/freq are the visualiser's shared state, not this graph's private
+           nodes: line 430 points analyser at eqCtx, but initGraph owns the fallback
+           path and would be broken by nulling it here. They are left alone on
+           purpose; the next successful build reassigns both. */
         eqCtx = null; eqPre = null; eqPost = null; eqBands = [];
       }
       return false;
