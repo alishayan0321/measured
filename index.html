@@ -1843,7 +1843,10 @@
   window.addEventListener('keydown', () => setKbd(true), true);
   window.addEventListener('pointerdown', () => setKbd(false), true);
 
-  applyTheme(PlayerAPI.get(THEME_KEY, 'light'), false);
+  // The phone package opens on the glass material: it is the look the APK is
+  // built around, and the .no-blur rebuild above keeps it stable in WebView.
+  // An explicit choice still wins, because the stored value comes first.
+  applyTheme(PlayerAPI.get(THEME_KEY, PlayerAPI.engine === 'android' ? 'liquid' : 'light'), false);
 
 
 
