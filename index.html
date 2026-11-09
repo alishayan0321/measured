@@ -362,8 +362,9 @@
      are cross-origin (the asset protocol and googlevideo). The Rust side runs a
      loopback proxy that re-serves either one with CORS headers, so the audible
      element becomes same-origin and a real filter chain is possible. One chain:
-     element -> preamp -> five peaking bands -> analyser -> speakers. Bands sit at
-     0 dB by default, so with the EQ off the sound is unchanged. */
+     element -> preamp -> five peaking bands -> analyser -> loudness gain ->
+     speakers. Bands sit at 0 dB by default, so with the EQ off the sound is
+     unchanged. */
   const EQ_BANDS = [60, 230, 910, 3600, 14000];
   const EQ_PRESETS = {
     Flat: [0, 0, 0, 0, 0],
@@ -375,6 +376,8 @@
     'Late night': [-3, -1, 2, 1, -2],
   };
   let eqCtx = null, eqPre = null, eqBands = [], eqOn = false, eqGains = EQ_BANDS.map(() => 0);
+  let eqBound = false;                     // the one-way door is behind us: audio is claimed
+  let eqDead = false;                      // claimed, but the graph never finished wiring
 
   function eqLoad() {
     try {
@@ -387,15 +390,19 @@
     try { localStorage.setItem('measured.eq', JSON.stringify({ on: eqOn, gains: eqGains })); } catch (e) {}
   }
   function eqBuild() {
+    /* Order is load-bearing. createMediaElementSource() is a one-way door: once it
+       returns, the element belongs to this context forever and no other context can
+       ever claim it. So the whole chain is built and wired to ac.destination FIRST,
+       and the element is claimed LAST — a failure before the claim leaves the
+       element untouched and the next call can retry cleanly. */
+    if (eqDead) return false;            // claimed, then never finished: do not report success
     if (eqCtx) return true;
     if (!PROXY) return false;
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
       eqCtx = new AC();
-      const src = eqCtx.createMediaElementSource(audio);
       eqPre = eqCtx.createGain();
       eqPre.gain.value = 1;
-      src.connect(eqPre);
       let node = eqPre;
       eqBands = EQ_BANDS.map((f) => {
         const b = eqCtx.createBiquadFilter();
@@ -422,8 +429,26 @@
       eqPost.connect(eqCtx.destination);
       analyser = an;                       // the visualiser now reads the real output
       freq = new Uint8Array(an.frequencyBinCount);
+      /* Last, and only last: claim the audible element. The flag is set on the very
+         next line, not after the connect — from the instant this call returns, the
+         catch below must never null eqCtx, or the next attempt would re-enter
+         createMediaElementSource() and throw InvalidStateError on every play. */
+      const src = eqCtx.createMediaElementSource(audio);
+      eqBound = true;
+      src.connect(eqPre);
       return true;
-    } catch (e) { eqCtx = null; return false; }
+    } catch (e) {
+      if (eqBound) {
+        /* The element is already captive and the graph is incomplete, so playback is
+           silent and unrecoverable. Say so once and stop retrying: returning false
+           here is honest, returning true would make eqApply configure a chain that
+           can never reach the speakers. */
+        eqDead = true;
+      } else {
+        eqCtx = null; eqPre = null; eqPost = null; eqBands = [];
+      }
+      return false;
+    }
   }
   function eqApply() {
     if (!eqBuild()) return;
