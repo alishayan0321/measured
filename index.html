@@ -411,7 +411,15 @@
       an.fftSize = 4096;
       an.smoothingTimeConstant = 0.82;
       node.connect(an);
-      an.connect(eqCtx.destination);
+      /* The loudness gain sits AFTER the analyser so the meter keeps showing EQ
+         shape only; putting it upstream would make the spectrum jump on every
+         track change and read as a rendering bug. `node` is deliberately NOT
+         rebound to eqPost: an -> eqPost -> destination is the single audio path,
+         and any surviving node.connect(destination) would bypass the gain. */
+      eqPost = eqCtx.createGain();
+      eqPost.gain.value = 1;               // explicit unity start, not the default
+      an.connect(eqPost);
+      eqPost.connect(eqCtx.destination);
       analyser = an;                       // the visualiser now reads the real output
       freq = new Uint8Array(an.frequencyBinCount);
       return true;
@@ -514,8 +522,30 @@
   }
   let STATS = {};
   let analyser = null, freq = null, ac = null;
+  let eqPost = null;                       // loudness gain on the EQ path (see eqBuild)
   let analysisEl = null;
   let liveSmooth = [], livePeak = [];
+
+  /* Loudness normalisation to -14 LUFS. Cuts freely, boosts at most 1.25x
+     (~+1.94 dB) because nothing downstream limits: eqPre feeds the bands and
+     eqPost feeds the destination directly, so a big boost would clip with no
+     one to stop it. `t.lufs` is truthy-guarded, not typeof-guarded — an
+     unanalysed track carries 0 and (-14 - 0) would be a -14 dB cut on it.
+     An absent or unanalysed track must reset the node to unity, otherwise the
+     previous track's gain rides into the next one.
+     Scope: eqBuild() is PROXY-gated, so local files have no Web Audio chain and
+     this is a no-op for them. Do NOT fall back to audio.volume — that is the
+     user's slider (setVol) and the mute icon reads it. */
+  function setLoudnessGain(t) {
+    if (!eqPost || !eqCtx) return;
+    const lufs = t && typeof t.lufs === 'number' && t.lufs ? t.lufs : 0;
+    const g = lufs ? Math.min(1.25, Math.pow(10, (-14 - lufs) / 20)) : 1;
+    const now = eqCtx.currentTime;
+    eqPost.gain.cancelScheduledValues(now);
+    eqPost.gain.setValueAtTime(eqPost.gain.value, now);
+    /* 20 ms: fast skips get a short fade, which is intended, not a glitch. */
+    eqPost.gain.setTargetAtTime(g, now, 0.02);
+  }
 
   /* The live EQ must never tap the element people are listening to.
      createMediaElementSource() is a one-way door: it diverts the element's output
@@ -846,6 +876,7 @@
     cur = i;
     const t = VIEW[i];
     curFile = t.file || '';
+    setLoudnessGain(t);             // before any await: the new track's gain lands first
     [...$('list').children].forEach((el, k) => {
       el.classList.toggle('on', k === i);
       el.setAttribute('aria-selected', k === i ? 'true' : 'false');
@@ -1961,6 +1992,7 @@ function stopAll() {
   currentVideo = null;
   try { if (player) player.stopVideo(); } catch (e) {}
   try { audio.pause(); playing = false; icon(false); } catch (e) {}
+  setLoudnessGain(null);   // transport stopped: drop the loudness gain back to unity
   tapPause();
   // leaving video mode used to leave "Video mode - uses much more data" on screen
   noteEl.textContent = mode === 'video' ? 'Video mode \u2014 uses much more data.' : 'Audio mode \u2014 lighter on data.';
