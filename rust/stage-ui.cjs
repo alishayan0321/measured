@@ -6,8 +6,8 @@ const path = require('path');
 const repo = path.resolve(__dirname, '..');
 const out = path.resolve(__dirname, 'desktop', 'dist');
 
-const files = ['index.html', 'api.js', 'fingerprints.js', 'fingerprints.json', 'library.json'];
-const dirs = ['deck', 'thumbs'];
+const files = ['index.html', 'api.js', 'fingerprints.js', 'fingerprints.json', 'library.json', 'icon.png'];
+const dirs = ['deck', 'styles', 'thumbs'];
 
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });

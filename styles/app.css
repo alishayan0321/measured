@@ -1,5 +1,5 @@
 
-/* STEP 1 â€” fingerprint gone; the stats row carries the numbers */
+/* STEP 1 — fingerprint gone; the stats row carries the numbers */
 .scope, .scope-ghost{display:none !important}
 .hero{display:block}
 
@@ -48,7 +48,7 @@
 .play::before{ background:radial-gradient(60% 100% at 50% 100%, rgba(255,190,160,.55), rgba(255,190,160,0) 70%) }
 
 
-/* â”€â”€ glass dock: transport as a floating frosted pill â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── glass dock: transport as a floating frosted pill ────────────── */
 .transport{
   display:flex; align-items:center; gap:14px;
   padding:9px 16px 9px 10px;
@@ -148,7 +148,7 @@
 @media (max-width:1180px){ .transport{flex-wrap:wrap; border-radius:26px} }
 
 
-/* â”€â”€ FINAL: one-step glass on the controls, neumorph everywhere else â”€â”€ */
+/* ── FINAL: one-step glass on the controls, neumorph everywhere else ── */
 
 /* 1. no nested pills: the transport is a flat row, buttons carry the glass */
 .transport{
@@ -251,7 +251,7 @@
 @media (prefers-reduced-motion:reduce){ .rnd,.play{transition:none} }
 
 
-/* â”€â”€ one centred axis: title, chips, deck, stats, dock â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── one centred axis: title, chips, deck, stats, dock ─────────── */
 .meta{text-align:center}
 .meta .artist{justify-content:center; display:flex}
 .meta h1{text-align:center}
@@ -272,7 +272,7 @@
 .readout{max-width:1010px; margin:0 auto}
 
 
-/* â”€â”€ corrections: neo buttons, left-aligned meta row, even vertical rhythm â”€â”€ */
+/* ── corrections: neo buttons, left-aligned meta row, even vertical rhythm ── */
 
 /* 1. kill the glass sheen layers, go back to soft neumorph */
 .rnd::after, .play::after, .rnd::before, .play::before{ content:none !important; display:none !important }
@@ -343,7 +343,7 @@
   margin-top:10px !important;
 }
 
-/* 3. one axis, even gaps: deck â†’ stats â†’ transport */
+/* 3. one axis, even gaps: deck → stats → transport */
 .deck{max-width:none !important; margin:0 !important}
 .readout{
   max-width:none !important;
@@ -363,7 +363,7 @@
   .readout{grid-template-columns:repeat(3,minmax(0,1fr)) !important}
 }
 
-/* 4. vertical centring â€” the song info was hanging from the top edge
+/* 4. vertical centring — the song info was hanging from the top edge
       (24px above, ~70px below). */
 .hero{
   display:flex; flex-direction:column;
@@ -374,7 +374,7 @@
 /* the deck's song panel is 174px against a 236px record: centre it */
 .deck-body{align-items:center}
 
-/* 5. cover art â€” the band above the artist name was dead space.
+/* 5. cover art — the band above the artist name was dead space.
       A record sleeve now sits on the left of the meta block; the text
       column keeps the old left axis. Size is vh-driven so the 663px
       window still fits and tall windows get a bigger sleeve. */
@@ -411,7 +411,7 @@
 .meta.no-cover .sleeve img{display:none}
 .meta.no-cover .sleeve-fallback{display:grid}
 
-/* â”€â”€ settings sheet Â· theme Â· mobile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── settings sheet · theme · mobile ───────────────────────────── */
 header{position:relative}
 .gear{flex:0 0 auto;width:30px;height:30px;display:grid;place-items:center;border:1px solid var(--hair);border-radius:2px;background:linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,.06));color:var(--ink-soft);cursor:pointer;transition:color .16s,border-color .16s,box-shadow .16s}
 .gear:hover{color:var(--ink);border-color:rgba(20,19,16,.30);box-shadow:0 1px 3px rgba(20,19,16,.14)}
@@ -529,7 +529,7 @@ header{position:relative}
   .readout .cell .v{font-size:13px}
 }
 
-/* â”€â”€ gear: leans on hover, keeps turning while settings is open â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── gear: leans on hover, keeps turning while settings is open ───────────── */
 .gear svg{transform-origin:50% 50%;transition:transform .42s cubic-bezier(.22,.8,.24,1)}
 .gear:hover svg,.gear:focus-visible svg{transform:rotate(62deg)}
 .gear:active svg{transform:rotate(26deg) scale(.94);transition-duration:.12s}
@@ -542,7 +542,7 @@ body.sheet-open .gear{color:var(--accent-ink);border-color:rgba(201,58,22,.42)}
   body.sheet-open .gear svg{animation:none}
 }
 
-/* â”€â”€ the settings sheet scrolls too, so its bar follows the same theme â”€â”€â”€â”€â”€â”€ */
+/* ── the settings sheet scrolls too, so its bar follows the same theme ────── */
 .sheet-body{scrollbar-width:thin;scrollbar-color:rgba(20,19,16,.24) transparent}
 .sheet-body::-webkit-scrollbar{width:12px;height:12px;background:transparent}
 .sheet-body::-webkit-scrollbar-button{display:none;width:0;height:0}
@@ -557,7 +557,7 @@ body.sheet-open .gear{color:var(--accent-ink);border-color:rgba(201,58,22,.42)}
 [data-theme="dark"] .sheet-body::-webkit-scrollbar-thumb:active{background:rgba(244,89,43,.88);background-clip:content-box}
 
 
-/* â”€â”€ now playing card (player theme, notification-card layout) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── now playing card (player theme, notification-card layout) ──────────── */
 .np-scrim{position:fixed;inset:0;z-index:70;background:rgba(20,19,16,.34)}
 .np-scrim[hidden]{display:none!important}
 .np{position:fixed;z-index:71;left:10px;right:10px;bottom:10px;margin:0 auto;max-width:440px;padding:12px 16px calc(14px + env(safe-area-inset-bottom));border-radius:16px;border:1px solid var(--hair);background:linear-gradient(180deg,var(--panel),var(--panel-2));color:var(--ink);box-shadow:var(--raised),0 26px 50px -28px rgba(20,19,16,.75);transform:translateY(26px);opacity:0;transition:transform .28s cubic-bezier(.22,.8,.24,1),opacity .2s ease}
@@ -670,7 +670,7 @@ body.video-mode .hero{gap:0}
 @media (max-width:760px){.yt-badge{bottom:calc(84px + env(safe-area-inset-bottom))}}
 
 
-/* design pass v1 (design QA) â€” appended last so it wins the cascade */
+/* design pass v1 (design QA) — appended last so it wins the cascade */
 :root{ --engrave: rgba(20,19,16,.62); --engrave-2: rgba(20,19,16,.70) }
 [data-theme="dark"]{ --engrave: rgba(241,237,227,.55); --engrave-2: rgba(241,237,227,.66) }
 
@@ -853,22 +853,22 @@ body.video-mode .hero{gap:0}
 .up-empty{padding:4px 10px 10px;font-size:11.5px;line-height:1.5;color:var(--ink-soft);opacity:.78}
 
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   LIQUID GLASS â€” an appearance option, not a repaint of the paper theme.
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIQUID GLASS — an appearance option, not a repaint of the paper theme.
 
    Modelled on Apple's Liquid Glass guidance (developer.apple.com/technologyoverviews/
    liquid-glass + /adopting-liquid-glass):
-     â€¢ the material is a distinct FUNCTIONAL layer floating above content, not a
-       background for content â€” so only chrome (header, deck, readout, transport,
+     • the material is a distinct FUNCTIONAL layer floating above content, not a
+       background for content — so only chrome (header, deck, readout, transport,
        sheet, library, card) becomes glass and the artwork stays printed;
-     â€¢ it refracts and tints whatever sits beneath, so the page needs real colour
+     • it refracts and tints whatever sits beneath, so the page needs real colour
        underneath: a slow, wide colour field instead of flat paper;
-     â€¢ every pane carries a specular edge â€” a bright 1px top rim, a soft inner glow,
+     • every pane carries a specular edge — a bright 1px top rim, a soft inner glow,
        a cool fringe where light bends at the bottom edge, and one long shadow;
-     â€¢ controls are concentric with their containers (larger radii, pill buttons);
-     â€¢ restraint: list rows and text keep the printed treatment, because glass on
+     • controls are concentric with their containers (larger radii, pill buttons);
+     • restraint: list rows and text keep the printed treatment, because glass on
        glass is exactly what the guidance warns against.
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 html[data-theme="liquid"] {
   color-scheme: light;
@@ -887,7 +887,7 @@ html[data-theme="liquid"] {
   --well: inset 0 1px 2px rgba(16, 26, 48, 0.12), inset 0 -1px 0 rgba(255, 255, 255, 0.6);
 }
 
-/* the world the glass refracts â€” four soft light sources, slowly drifting */
+/* the world the glass refracts — four soft light sources, slowly drifting */
 html[data-theme="liquid"] body {
   background:
     radial-gradient(58% 46% at 16% 6%, #ffd7e9 0%, rgba(255, 215, 233, 0) 62%),
@@ -922,7 +922,7 @@ html[data-theme="liquid"] body::after {
   to   { transform: translate3d(2%, 2%, 0) scale(1.08); }
 }
 
-/* â”€â”€ the glass recipe â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/* ── the glass recipe ──────────────────────────────────────────────────────
    One shared surface: bright rim, inner glow, cool refraction fringe, deep but
    distant shadow. The radius is larger than the paper theme's so controls can
    nest concentrically inside their containers. */
@@ -997,7 +997,7 @@ html[data-theme="liquid"] .stage {
     0 14px 30px -22px rgba(16, 26, 48, 0.6);
 }
 
-/* â”€â”€ controls: concentric, pill-shaped, glassy, with a live tint â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── controls: concentric, pill-shaped, glassy, with a live tint ───────────── */
 html[data-theme="liquid"] .rnd {
   background:
     linear-gradient(160deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.42) 52%, rgba(255, 255, 255, 0.66));
@@ -1047,7 +1047,7 @@ html[data-theme="liquid"] .seg-b[aria-checked="true"] {
   color: var(--ink);
 }
 
-/* â”€â”€ rails: light wells with a tinted fill â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── rails: light wells with a tinted fill ────────────────────────────────── */
 html[data-theme="liquid"] .seek .rail,
 html[data-theme="liquid"] .vol .track .rail,
 html[data-theme="liquid"] .np-rail {
@@ -1067,14 +1067,14 @@ html[data-theme="liquid"] .vol .track b {
   box-shadow: 0 2px 6px rgba(16, 26, 48, 0.35), inset 0 1px 0 #fff;
 }
 
-/* â”€â”€ readout: engraved labels stay printed, the plate is glass â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── readout: engraved labels stay printed, the plate is glass ────────────── */
 html[data-theme="liquid"] .readout .cell { background: transparent; box-shadow: none; }
 html[data-theme="liquid"] .readout .cell + .cell { border-left: 1px solid rgba(255, 255, 255, 0.55); }
 html[data-theme="liquid"] .readout .k,
 html[data-theme="liquid"] .readout .lbl { color: rgba(16, 26, 48, 0.55); }
 html[data-theme="liquid"] .readout .v { color: var(--ink); }
 
-/* â”€â”€ library: rows tint on hover, the selected row becomes a glass pill â”€â”€â”€â”€â”€ */
+/* ── library: rows tint on hover, the selected row becomes a glass pill ───── */
 html[data-theme="liquid"] .row {
   border-radius: 14px;
   transition: background 0.18s, box-shadow 0.18s;
@@ -1095,12 +1095,12 @@ html[data-theme="liquid"] .sleeve {
   box-shadow: inset 0 1px 0 #fff, 0 10px 24px -16px rgba(16, 26, 48, 0.7);
 }
 
-/* â”€â”€ the settings sheet reads as a slab of glass over the page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── the settings sheet reads as a slab of glass over the page ───────────── */
 html[data-theme="liquid"] .scrim { background: rgba(16, 26, 48, 0.24); backdrop-filter: blur(2px); }
 html[data-theme="liquid"] .sheet-body { padding-top: 6px; }
 html[data-theme="liquid"] .kvt { border-bottom: 1px solid rgba(255, 255, 255, 0.45); }
 
-/* â”€â”€ Nowhere / video mode reuse the same material â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Nowhere / video mode reuse the same material ────────────────────────── */
 html[data-theme="liquid"] .yt-row,
 html[data-theme="liquid"] .vt-row {
   border-radius: 16px;
@@ -1121,7 +1121,7 @@ html[data-theme="liquid"] .scrub-bubble {
   color: var(--ink);
 }
 
-/* â”€â”€ accessibility: honour reduced transparency and reduced motion â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── accessibility: honour reduced transparency and reduced motion ───────── */
 @media (prefers-reduced-transparency: reduce) {
   html[data-theme="liquid"] :is(header, .lib, .deck, .readout, .transport, .sheet, .np) {
     background: #f2f6fc;
@@ -1185,16 +1185,16 @@ html[data-theme="liquid"] .stage{ border-radius:14px !important; }
 html[data-theme="liquid"] .readout .cell{ -webkit-backdrop-filter:none !important; backdrop-filter:none !important; }
 
 
-/* â”€â”€ LIQUID GLASS, cream revision â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/* ── LIQUID GLASS, cream revision ─────────────────────────────────────────────
    Keep the cream. It is the more honest reading of the
-   guidance: the material does not need a rainbow to refract â€” it needs real,
+   guidance: the material does not need a rainbow to refract — it needs real,
    slightly uneven light behind it and a crisp edge. So the backdrop stays the
    app's own paper, the blue colour field is gone, and the "liquid" quality now
    comes from three things instead:
      1. warm-tinted glass (the panes sample the cream and push it warmer),
      2. a hard specular rim + a cool refraction fringe at the bottom edge, which
         is what the eye actually reads as a lens,
-     3. the artwork itself â€” sleeves and the vinyl press against the panes, so
+     3. the artwork itself — sleeves and the vinyl press against the panes, so
         the tint shifts under each track the way it does in the reference.
    Accent returns to the paper orange, because a cream surface with a blue accent
    reads as two unrelated designs stapled together. */
@@ -1301,7 +1301,7 @@ html[data-theme="liquid"] .row.is-on{
 html[data-theme="liquid"] .row:hover{ background:rgba(255,252,246,.55) !important; }
 
 
-/* â”€â”€ LIQUID GLASS: the panes borrow the record's own colour â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/* ── LIQUID GLASS: the panes borrow the record's own colour ───────────────────
    Cream backdrop + colourless glass would read as frosted paper, so the deck
    carries a heavily blurred, desaturated copy of the current sleeve inside its
    own pane (the same trick Apple Music uses for now-playing backgrounds). It is
@@ -1336,13 +1336,13 @@ html[data-theme="liquid"] .lib{
 }
 
 
-/* â”€â”€ cream glass, final polish â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/* ── cream glass, final polish ────────────────────────────────────────────────
    Two things still read as "paper with a shadow" rather than as material:
    the header met the page with a hard seam, and the turntable sat in a plain
    white box. Both are cheap to fix honestly:
-     â€¢ a 14px cream-to-transparent wash under the header gives the scroll-edge
+     • a 14px cream-to-transparent wash under the header gives the scroll-edge
        impression Apple describes, without moving the layout;
-     â€¢ the platter gets its own pane with a bright top rim and a deep seated
+     • the platter gets its own pane with a bright top rim and a deep seated
        shadow, so the record looks like it is resting on glass, not on paper. */
 html[data-theme="liquid"] header::after{
   content:""; position:absolute; left:0; right:0; top:100%; height:14px; pointer-events:none;
@@ -1368,7 +1368,7 @@ html[data-theme="liquid"] .deck{
 }
 
 
-/* â”€â”€ Android WebView cannot do backdrop-filter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/* ── Android WebView cannot do backdrop-filter ────────────────────────────────
    The phone renders the Glass panes as missing/half-painted tiles and the whole
    page flickers: Chromium's backdrop-filter sampling is unstable in a WebView
    composited over a SurfaceView-backed root. Detection is done in JS (engine ===
@@ -1400,11 +1400,11 @@ html.no-blur[data-theme="liquid"] .deck::after{ opacity:.16; filter:blur(20px) s
 html.no-blur[data-theme="liquid"] .np::after{ opacity:.12; filter:blur(16px) saturate(.8); }
 
 
-/* â”€â”€ flicker fix, all platforms â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/* ── flicker fix, all platforms ───────────────────────────────────────────────
    The page flickers on desktop as well, so the cause is not WebView:
    Chromium is re-sampling a stack of backdrop-filters (panes inside panes) while
    a fixed, blurred wash sits behind them, and composited layers drop out between
-   frames. On a flat cream backdrop that blur was buying almost nothing anyway â€”
+   frames. On a flat cream backdrop that blur was buying almost nothing anyway —
    the material reads through the rim, the warm tint and the seated shadow.
    So: no backdrop-filter anywhere in Liquid, and the wash becomes a static
    gradient that cannot be repainted mid-frame. */
@@ -1434,7 +1434,7 @@ html[data-theme="liquid"] body::after{ animation:none !important; }
 html[data-theme="liquid"] body::after{ opacity:.055 !important; }
 
 
-/* â”€â”€ Liquid on the phone â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/* ── Liquid on the phone ─────────────────────────────────────────────────────
    The desktop rules turned the library into an in-flow pane (position:relative +
    margin), but on the phone .lib is the off-canvas drawer: making it in-flow put
    a 100vh block above main, so the whole player sat below the fold and the page
@@ -1485,7 +1485,7 @@ html[data-theme="liquid"] body::after{ opacity:.055 !important; }
 
 /* The dock was sticky-bottom inside a hero taller than the viewport, so its last
    ~20px (the seek rail) lived below the screen edge. On the phone it becomes a
-   normal block at the end of the column â€” the page scrolls instead â€” and the
+   normal block at the end of the column — the page scrolls instead — and the
    platter gives back a little width so everything fits a 760px-tall viewport. */
 @media (max-width: 760px) {
   html[data-theme="liquid"] .transport{

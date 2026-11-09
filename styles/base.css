@@ -48,7 +48,7 @@
   .lib-h{display:flex; justify-content:space-between; align-items:center; padding:16px 20px 10px}
   .kicker{font-family:var(--mono); font-size:10.5px; letter-spacing:.24em; text-transform:uppercase; color:var(--graphite)}
   .lib-list{overflow:auto; padding:0 10px 16px}
-  /* themed rail â€” no OS arrow buttons (scrollbar-width:thin forced the native one) */
+  /* themed rail — no OS arrow buttons (scrollbar-width:thin forced the native one) */
   .lib-list::-webkit-scrollbar{width:12px; height:12px; background:transparent}
   .lib-list::-webkit-scrollbar-button{display:none; width:0; height:0}
   .lib-list::-webkit-scrollbar-track{background:transparent}
@@ -169,7 +169,7 @@
   }
 
 
-/* FINISH-GATE â€” overrides from the design review. Later cascade wins. */
+/* FINISH-GATE — overrides from the design review. Later cascade wins. */
 
 /* vertical budget: one gap was 40px against 18/18 elsewhere */
 .scope{margin:0}
