@@ -127,6 +127,29 @@ cross-check; the gate needs 100 picks **and** 20 sessions per arm.
 Kill rule: if `kept/played` on recommended tracks stays under 15% after 200
 sessions, the learned arm is off.
 
+## What the transport promises
+
+Three paths decide what plays next, and they are deliberately different:
+
+| path | decision | why |
+|---|---|---|
+| `n`/`p`, `#next`/`#prev`, hardware keys | `cur ± 1`, wrapping (`step()`) | a manual skip walks the list you can see |
+| end of track | `RANK.nextIndex()` | the ranker earns the choice when you stayed for the song |
+| "Up next" strip | `RANK.rank(lib, 3)` | a shortlist; each chip plays that track directly |
+
+Cold (`events < 20` or `coverage < 0.60`) makes `rank()` return `cold: true`
+rows and `nextIndex()` return `null`, so the strip is rewritten from `cur + 1`
+and the end of a track steps sequentially. Cold is exact: a fresh install never
+walks out to a streamed preview on its first finished song.
+
+Warm, the strip and the end of a track can disagree — `nextIndex()` is the arm's
+real decision and consumes a propensity record, `rank()` does not. That gap is
+the experiment, not a bug.
+
+**Do not make `step()` rank-driven.** Every skip would become a logged pick,
+move the propensity denominators behind the ship/kill rule, and turn the `h` arm
+into an `l`-ordered player.
+
 ## Retraining
 
 ```
