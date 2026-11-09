@@ -1688,3 +1688,30 @@ html[data-theme="liquid"] .seg-b[aria-checked="true"] {
    clock read 0:00. Empty is the honest default. */
 .seek .fill { width: 0; }
 .seek .head { left: 0; }
+/* Up next preview: the one block on the phone that ignored the glass material —
+   bare paper under a bare rule while every other block is a card. It is part of
+   the same family now, and the queue cards share the chip material. */
+html[data-theme="liquid"] .queue-strip {
+  margin-top: 12px; padding: 10px 10px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 18px;
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.34) 45%, rgba(255, 255, 255, 0.5));
+  box-shadow: 0 14px 30px -22px rgba(16, 26, 48, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+html[data-theme="liquid"] .queue-h .kicker { color: rgba(16, 26, 48, 0.72); }
+html[data-theme="liquid"] .queue-item {
+  background: rgba(255, 255, 255, 0.66);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 12px;
+  box-shadow: 0 4px 10px -7px rgba(16, 26, 48, 0.5), inset 0 1px 0 #fff;
+}
+html[data-theme="liquid"] .queue-item:hover { border-color: rgba(220, 63, 25, 0.35); }
+html[data-theme="liquid"] .qi-art { border-radius: 9px; }
+
+/* Seek is the primary rail: it sits under the buttons, volume under it. The
+   mobile layout inherited order:5 on .seek-wrap, so making the volume row
+   full-width pushed the volume above the seek. */
+@media (max-width: 760px) {
+  .seek-wrap { order: 0 !important; }
+  .vol { order: 1 !important; }
+}
