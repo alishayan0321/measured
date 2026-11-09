@@ -1260,6 +1260,12 @@
     const sk = $('seek');
     sk.setAttribute('aria-valuemax', String(Math.round(d)));
     sk.setAttribute('aria-valuetext', fmt(at) + ' of ' + fmt(d));
+    /* Paint the rail here too: it used to be written only by timeupdate, so a
+       launch that sat paused at 0:00 showed a full orange rail and the knob at
+       the far right until playback started. */
+    const p0 = d ? (at / d) * 100 : 0;
+    $('sfill').style.width = p0 + '%'; $('shead').style.left = p0 + '%';
+    sk.setAttribute('aria-valuenow', String(Math.round(at)));
   });
   audio.addEventListener('error', async () => {
     const t = VIEW[cur];
