@@ -24,6 +24,29 @@ const CLASSES = path.join(HERE, 'classes');
 const DEX = path.join(HERE, 'dex');
 
 const FAST = process.argv.includes('--fast');
+
+// Single source of truth for the shipped version: the desktop Tauri config is
+// bumped at release time, so the APK follows it instead of drifting behind.
+// (v2.0.3 once shipped an APK whose manifest still claimed 2.0.0 / code 2.)
+function readVersion() {
+  try {
+    const conf = JSON.parse(
+      fs.readFileSync(path.join(PLAYER, 'rust', 'desktop', 'tauri.conf.json'), 'utf8'),
+    );
+    const m = /^(\d+)\.(\d+)\.(\d+)/.exec(conf.version || '');
+    if (m) {
+      return {
+        name: conf.version,
+        code: Number(m[1]) * 10000 + Number(m[2]) * 100 + Number(m[3]),
+      };
+    }
+  } catch {
+    // fall through to the pinned fallback below
+  }
+  console.warn('version: tauri.conf.json unreadable, pinning 2.0.0 (code 2)');
+  return { name: '2.0.0', code: 2 };
+}
+const VERSION = readVersion();
 const env = {
   ...process.env,
   JAVA_HOME: JDK,
@@ -136,8 +159,8 @@ run('aapt2 link', exe('aapt2'), [
   '--java', GEN,
   '--min-sdk-version', '24',
   '--target-sdk-version', '34',
-  '--version-code', '2',
-  '--version-name', '2.0.0',
+  '--version-code', String(VERSION.code),
+  '--version-name', VERSION.name,
   '-0', '.webm',
   '-0', '.mp3',
   '-0', '.jpg',

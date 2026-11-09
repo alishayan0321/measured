@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.measured.player"
-    android:versionCode="2"
-    android:versionName="2.0.0">
+    package="com.measured.player">
+    <!-- versionCode / versionName are injected by build.cjs from
+         rust/desktop/tauri.conf.json so the APK can never drift from the
+         release tag. Hardcoding them here silently overrode those flags. -->
 
     
     <!-- Nowhere (YouTube search + streaming) needs the network; the local library does not. -->
