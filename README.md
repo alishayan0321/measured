@@ -15,13 +15,14 @@ The Windows build is x64 only and needs the WebView2 runtime, which ships with W
 
 On Android, tap the APK, allow your browser or file manager to *install unknown apps* (the normal Android prompt for any app not from the Play Store), then install.
 
-## What's new in 2.0.2
+## What's new in 2.0.3
 
-- **Mojibake repaired.** The desktop UI's text was UTF-8 read as CP-1252, so every separator, arrow, ellipsis and symbol arrived as garbage — `MEASURE Â· MK II`, `33â€¦ rpm`, `â€""` where a metric had no value. 111 corrupted sequences fixed across `index.html`, `styles/app.css` and `styles/base.css`.
-- **Styles and icon now ship with the desktop build.** The staging script copied only `index.html` into `dist/`, so the split stylesheets and the window icon never reached the package. `styles/` and `icon.png` are staged with it now.
-- Version strings bumped to 2.0.2. The executable reports `FileVersion 2.0.2`.
+- **Loudness normalisation.** Tracks are matched to -14 LUFS through a gain node after the analyser, so the spectrum meter keeps showing EQ shape while the level is levelled. Boosts stop at 1.25x and at -1 dBTP of the measured true peak, so a quiet-but-peaky master cannot be pushed into clipping. Press `b` to A/B against the raw level.
+- **Transport fixes.** The play position survives a relaunch, the dock speaker is a real mute (button, `m`, card — one owner, remembered), Previous restarts the current track past three seconds, and dragging the rail to the very end no longer leaves a stopped player with a pause icon.
+- **Everyone gets the styles.** `android/build.cjs` staged every web asset except `styles/`, so any APK built after the 2.0.2 CSS split would have installed an unstyled player. It is staged now.
+- Version strings bumped to 2.0.3. The executable reports `FileVersion 2.0.3`.
 
-Full history: [2.0.1](RELEASE-2.0.1.md) · [2.0.0](RELEASE-2.0.0.md).
+Full history: [2.0.2](RELEASE-2.0.2.md) · [2.0.1](RELEASE-2.0.1.md) · [2.0.0](RELEASE-2.0.0.md).
 
 ## The 2.0 feature set
 
