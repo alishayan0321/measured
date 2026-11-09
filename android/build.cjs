@@ -84,7 +84,10 @@ console.log(`MEASURED android build  ${FAST ? '(fast, no songs)' : '(full)'}`);
 // ── 1. stage assets ──────────────────────────────────────────────────────────
 rm(ASSETS); rm(GEN); rm(CLASSES); rm(DEX); fs.mkdirSync(OUT, { recursive: true });
 
-const WEB = ['index.html', 'api.js', 'deck', 'lib', 'thumbs', 'fingerprints.js', 'library.json'];
+// 'styles' is load-bearing: since 2.0.2 the interface's CSS lives in
+// styles/app.css and styles/base.css instead of an inline <style> block, so an
+// APK built without it installs a completely unstyled player.
+const WEB = ['index.html', 'api.js', 'deck', 'lib', 'styles', 'thumbs', 'fingerprints.js', 'library.json'];
 const webDir = path.join(ASSETS, 'player');
 fs.mkdirSync(webDir, { recursive: true });
 for (const name of WEB) {
