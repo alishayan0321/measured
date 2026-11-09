@@ -427,6 +427,12 @@
   }
   function eqApply() {
     if (!eqBuild()) return;
+    /* eqBuild() is lazy — it only runs on the element's first play event — so the
+       setLoudnessGain(t) inside select() is a silent no-op for the first track of
+       a session (eqPost is still null then). Re-apply now that the node exists.
+       Idempotent: repeated play/pause rewrites the same target, which
+       setTargetAtTime treats as a no-op, not a recompute. */
+    setLoudnessGain(VIEW[cur]);
     if (eqCtx.state === 'suspended') eqCtx.resume().catch(() => {});
     eqBands.forEach((b, i) => { b.gain.value = eqOn ? eqGains[i] : 0; });
   }
@@ -533,9 +539,10 @@
      unanalysed track carries 0 and (-14 - 0) would be a -14 dB cut on it.
      An absent or unanalysed track must reset the node to unity, otherwise the
      previous track's gain rides into the next one.
-     Scope: eqBuild() is PROXY-gated, so local files have no Web Audio chain and
-     this is a no-op for them. Do NOT fall back to audio.volume — that is the
-     user's slider (setVol) and the mute icon reads it. */
+     Scope: on desktop PROXY is set for local files too — the loopback re-serves
+     asset.localhost with CORS headers — so this is live for local playback as
+     well as YouTube. Do NOT fall back to audio.volume — that is the user's
+     slider (setVol) and the mute icon reads it. */
   function setLoudnessGain(t) {
     if (!eqPost || !eqCtx) return;
     const lufs = t && typeof t.lufs === 'number' && t.lufs ? t.lufs : 0;
