@@ -564,7 +564,10 @@
   /* Loudness normalisation to -14 LUFS. Cuts freely, boosts at most 1.25x
      (~+1.94 dB) because nothing downstream limits: eqPre feeds the bands and
      eqPost feeds the destination directly, so a big boost would clip with no
-     one to stop it. `t.lufs` is truthy-guarded, not typeof-guarded — an
+     one to stop it. A measured true peak caps the boost too: peak plus gain must
+     stay under -1 dBTP (EBU R128), otherwise the 1.25x ceiling ignores the peak
+     it was stored for.
+     `t.lufs` is truthy-guarded, not typeof-guarded — an
      unanalysed track carries 0 and (-14 - 0) would be a -14 dB cut on it.
      An absent or unanalysed track must reset the node to unity, otherwise the
      previous track's gain rides into the next one.
@@ -575,7 +578,16 @@
   function setLoudnessGain(t) {
     if (!eqPost || !eqCtx) return;
     const lufs = t && typeof t.lufs === 'number' && t.lufs ? t.lufs : 0;
-    const g = lufs ? Math.min(1.25, Math.pow(10, (-14 - lufs) / 20)) : 1;
+    let g = 1;
+    if (lufs) {
+      g = Math.min(1.25, Math.pow(10, (-14 - lufs) / 20));
+      /* tp is the inverse of lufs: 0 dBTP is a real measurement (the peak sits on
+         the ceiling) and the value that most needs the cap, so it is typeof-guarded
+         while lufs stays truthy-guarded. Absent tp means no measurement was made. */
+      if (t && typeof t.tp === 'number' && Number.isFinite(t.tp)) {
+        g = Math.min(g, Math.pow(10, (-1 - t.tp) / 20));
+      }
+    }
     const now = eqCtx.currentTime;
     eqPost.gain.cancelScheduledValues(now);
     eqPost.gain.setValueAtTime(eqPost.gain.value, now);
