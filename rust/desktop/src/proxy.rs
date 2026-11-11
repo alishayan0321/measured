@@ -57,7 +57,8 @@ const ALLOWED_ORIGINS: &[&str] = &[
 /// Startup breadcrumb - the app has no console, so the proxy records why it
 /// did or did not come up. Overwritten on every launch.
 fn note(msg: &str) {
-    let dir = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().to_string());
+    let dir = std::env::var("LOCALAPPDATA")
+        .unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().to_string());
     let path = std::path::Path::new(&dir).join("MEASURED");
     let _ = std::fs::create_dir_all(&path);
     let _ = std::fs::write(path.join("proxy.txt"), msg);
@@ -141,7 +142,10 @@ fn header_value(head: &str, name: &str) -> Option<String> {
 fn allowed_origin(head: &str) -> Option<String> {
     let raw = header_value(head, "origin")?;
     let o = raw.trim();
-    ALLOWED_ORIGINS.iter().find(|a| **a == o).map(|a| a.to_string())
+    ALLOWED_ORIGINS
+        .iter()
+        .find(|a| **a == o)
+        .map(|a| a.to_string())
 }
 
 /// True when the request carried an Origin that is *not* ours - a browser page
@@ -156,12 +160,22 @@ fn parse_range(head: &str) -> Option<(usize, Option<usize>)> {
     let first = spec.split(',').next()?.trim();
     let (a, b) = first.split_once('-')?;
     let start: usize = a.trim().parse().ok()?;
-    let end = if b.trim().is_empty() { None } else { b.trim().parse().ok() };
+    let end = if b.trim().is_empty() {
+        None
+    } else {
+        b.trim().parse().ok()
+    };
     Some((start, end))
 }
 
 fn mime_for(path: &str) -> &'static str {
-    match path.rsplit('.').next().unwrap_or("").to_ascii_lowercase().as_str() {
+    match path
+        .rsplit('.')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "mp3" => "audio/mpeg",
         "m4a" | "aac" | "mp4" => "audio/mp4",
         "flac" => "audio/flac",
@@ -175,19 +189,30 @@ fn mime_for(path: &str) -> &'static str {
 /// Only `googlevideo.com` and its subdomains. This is the whole point of the
 /// `/u` endpoint, so anything else is a bug or an attack.
 fn upstream_allowed(url: &str) -> bool {
-    let rest = match url.strip_prefix("https://").or_else(|| url.strip_prefix("http://")) {
+    let rest = match url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+    {
         Some(r) => r,
         None => return false,
     };
     let host_port = rest.split(['/', '?', '#']).next().unwrap_or("");
-    let host = host_port.split(':').next().unwrap_or("").to_ascii_lowercase();
+    let host = host_port
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
     host == "googlevideo.com" || host.ends_with(".googlevideo.com")
 }
 
 /// True when `path` resolves inside one of the app's own media directories.
 fn path_allowed(path: &str) -> bool {
-    let Some(roots) = ROOTS.get() else { return false };
-    let Ok(canon) = std::fs::canonicalize(path) else { return false };
+    let Some(roots) = ROOTS.get() else {
+        return false;
+    };
+    let Ok(canon) = std::fs::canonicalize(path) else {
+        return false;
+    };
     roots.iter().any(|root| {
         std::fs::canonicalize(root)
             .map(|r| canon.starts_with(&r))
@@ -195,7 +220,14 @@ fn path_allowed(path: &str) -> bool {
     })
 }
 
-fn respond(stream: &mut TcpStream, status: u16, reason: &str, origin: Option<&str>, extra: &str, body: &[u8]) {
+fn respond(
+    stream: &mut TcpStream,
+    status: u16,
+    reason: &str,
+    origin: Option<&str>,
+    extra: &str,
+    body: &[u8],
+) {
     let cors = match origin {
         Some(o) => format!(
             "Access-Control-Allow-Origin: {o}\r\n\
@@ -220,7 +252,10 @@ fn respond(stream: &mut TcpStream, status: u16, reason: &str, origin: Option<&st
 }
 
 fn fail(stream: &mut TcpStream, code: u16, reason: &str, origin: Option<&str>, msg: &str) {
-    let extra = format!("Content-Type: text/plain\r\nContent-Length: {}\r\n", msg.len());
+    let extra = format!(
+        "Content-Type: text/plain\r\nContent-Length: {}\r\n",
+        msg.len()
+    );
     respond(stream, code, reason, origin, &extra, msg.as_bytes());
 }
 
@@ -344,13 +379,25 @@ fn serve(mut stream: TcpStream) {
         Some((tok, tail)) => {
             let expected = TOKEN.get().map(|t| t.as_str()).unwrap_or("");
             if expected.is_empty() || tok != expected {
-                fail(&mut stream, 403, "Forbidden", origin.as_deref(), "bad token");
+                fail(
+                    &mut stream,
+                    403,
+                    "Forbidden",
+                    origin.as_deref(),
+                    "bad token",
+                );
                 return;
             }
             format!("/{tail}")
         }
         None => {
-            fail(&mut stream, 403, "Forbidden", origin.as_deref(), "bad token");
+            fail(
+                &mut stream,
+                403,
+                "Forbidden",
+                origin.as_deref(),
+                "bad token",
+            );
             return;
         }
     };
@@ -360,12 +407,24 @@ fn serve(mut stream: TcpStream) {
         return;
     }
     if method != "GET" && method != "HEAD" {
-        fail(&mut stream, 405, "Method Not Allowed", origin.as_deref(), "GET or HEAD only");
+        fail(
+            &mut stream,
+            405,
+            "Method Not Allowed",
+            origin.as_deref(),
+            "GET or HEAD only",
+        );
         return;
     }
     // `/u` is the only endpoint; anything else is a probe.
     if path != "/u" {
-        fail(&mut stream, 404, "Not Found", origin.as_deref(), "unknown endpoint");
+        fail(
+            &mut stream,
+            404,
+            "Not Found",
+            origin.as_deref(),
+            "unknown endpoint",
+        );
         return;
     }
 
@@ -373,7 +432,13 @@ fn serve(mut stream: TcpStream) {
 
     // ---- upstream ---------------------------------------------------------
     let Some(url) = query(&query_raw, "u") else {
-        fail(&mut stream, 400, "Bad Request", origin.as_deref(), "missing u");
+        fail(
+            &mut stream,
+            400,
+            "Bad Request",
+            origin.as_deref(),
+            "missing u",
+        );
         return;
     };
 
@@ -386,7 +451,13 @@ fn serve(mut stream: TcpStream) {
     }
 
     if !upstream_allowed(&url) {
-        fail(&mut stream, 403, "Forbidden", origin.as_deref(), "host not allowed");
+        fail(
+            &mut stream,
+            403,
+            "Forbidden",
+            origin.as_deref(),
+            "host not allowed",
+        );
         return;
     }
 
@@ -403,18 +474,33 @@ fn serve(mut stream: TcpStream) {
     match fetch_range(&url, start, end) {
         Ok(bytes) => {
             let n = bytes.len();
-            let total_str = hint_total.map(|t| t.to_string()).unwrap_or_else(|| "*".to_string());
+            let total_str = hint_total
+                .map(|t| t.to_string())
+                .unwrap_or_else(|| "*".to_string());
             let extra = format!(
                 "Content-Type: audio/webm\r\nAccept-Ranges: bytes\r\nContent-Range: bytes {start}-{}/{total_str}\r\nContent-Length: {n}\r\nCache-Control: no-store\r\n",
                 start + n.saturating_sub(1)
             );
-            respond(&mut stream, 206, "Partial Content", origin.as_deref(), &extra, &[]);
+            respond(
+                &mut stream,
+                206,
+                "Partial Content",
+                origin.as_deref(),
+                &extra,
+                &[],
+            );
             if method != "HEAD" {
                 let _ = stream.write_all(&bytes);
                 let _ = stream.flush();
             }
         }
-        Err(e) => fail(&mut stream, 502, "Bad Gateway", origin.as_deref(), &format!("upstream: {e}")),
+        Err(e) => fail(
+            &mut stream,
+            502,
+            "Bad Gateway",
+            origin.as_deref(),
+            &format!("upstream: {e}"),
+        ),
     }
 }
 

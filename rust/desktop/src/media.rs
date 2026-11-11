@@ -125,7 +125,9 @@ pub fn smtc_update(state: State<'_, MediaState>, now: NowPlaying) {
         Ok(g) => g,
         Err(_) => return,
     };
-    let Some(controls) = guard.as_mut() else { return };
+    let Some(controls) = guard.as_mut() else {
+        return;
+    };
 
     let _ = controls.set_metadata(MediaMetadata {
         title: now.title.as_deref(),

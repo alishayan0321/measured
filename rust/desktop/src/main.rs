@@ -15,15 +15,16 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
+use std::time::UNIX_EPOCH;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Theme};
 
 use measured_core as core;
 
+mod media;
 mod net;
 mod proxy;
-mod media;
 
 #[derive(Debug, Clone, Serialize)]
 struct TrackOut {
@@ -82,7 +83,10 @@ fn bundled_dir(app: &AppHandle) -> Option<PathBuf> {
             return Some(clean(p));
         }
     }
-    dev_root().map(|r| r.join("songs")).filter(|p| p.is_dir()).map(clean)
+    dev_root()
+        .map(|r| r.join("songs"))
+        .filter(|p| p.is_dir())
+        .map(clean)
 }
 /// Absolute, ..-free path: Tauri's asset protocol rejects paths that walk up.
 fn clean(p: PathBuf) -> PathBuf {
@@ -135,7 +139,10 @@ fn thumbs_dir(app: &AppHandle) -> Option<PathBuf> {
             return Some(clean(p));
         }
     }
-    dev_root().map(|r| r.join("thumbs")).filter(|p| p.is_dir()).map(clean)
+    dev_root()
+        .map(|r| r.join("thumbs"))
+        .filter(|p| p.is_dir())
+        .map(clean)
 }
 
 fn settings_path(app: &AppHandle) -> PathBuf {
@@ -147,10 +154,43 @@ fn settings_path(app: &AppHandle) -> PathBuf {
     base.join("settings.json")
 }
 
+/// Where the duration cache lives. It sits in the cache dir next to the
+/// transcodes because both are derived data: deleting either only costs time.
+fn duration_cache_path(app: &AppHandle) -> PathBuf {
+    let base = app
+        .path()
+        .app_cache_dir()
+        .unwrap_or_else(|_| std::env::temp_dir());
+    std::fs::create_dir_all(&base).ok();
+    base.join("durations.json")
+}
+
+/// Reduce a page-supplied file name to a single path component.
+///
+/// `prepare` and `remove_added` join this onto a library directory, so an
+/// absolute path or a `..` segment would let the page read or delete anything
+/// the process can reach. `file_name` drops every directory part; requiring the
+/// result to equal the input rejects `..`, `a/b`, `./a` and absolute paths
+/// outright instead of silently rewriting them into a different file.
+fn safe_name(file: &str) -> Option<String> {
+    let name = Path::new(file).file_name()?.to_string_lossy().to_string();
+    if name == file {
+        Some(name)
+    } else {
+        None
+    }
+}
+
 // ---------------------------------------------------------------- commands
 
-fn collect(dir: &Path, key: &str, thumbs: Option<&Path>, added: bool) -> Vec<TrackOut> {
-    let lib = core::scan_dir(dir, thumbs);
+fn collect(
+    dir: &Path,
+    key: &str,
+    thumbs: Option<&Path>,
+    added: bool,
+    cache: &mut core::DurationCache,
+) -> Vec<TrackOut> {
+    let lib = core::scan_dir_cached(dir, thumbs, cache);
     lib.tracks
         .into_iter()
         .map(|t| TrackOut {
@@ -176,21 +216,30 @@ fn collect(dir: &Path, key: &str, thumbs: Option<&Path>, added: bool) -> Vec<Tra
         .collect()
 }
 
-#[tauri::command]
+/// Runs off the main thread: a cold scan decodes every file whose container
+/// does not declare a length, which used to freeze the window for minutes.
+#[tauri::command(async)]
 fn library(app: AppHandle) -> Result<Lib, String> {
     let thumbs = thumbs_dir(&app);
     let mut tracks: Vec<TrackOut> = Vec::new();
 
+    // One cache for both folders, saved once at the end. A reload of an
+    // unchanged library must not decode anything at all.
+    let cache_path = duration_cache_path(&app);
+    let mut cache = core::DurationCache::load(&cache_path);
+
     if let Some(dir) = bundled_dir(&app) {
-        tracks.extend(collect(&dir, "lib", thumbs.as_deref(), false));
+        tracks.extend(collect(&dir, "lib", thumbs.as_deref(), false, &mut cache));
     }
     let added = added_dir(&app);
-    tracks.extend(collect(&added, "add", thumbs.as_deref(), true));
+    tracks.extend(collect(&added, "add", thumbs.as_deref(), true, &mut cache));
+    cache.save(&cache_path).ok();
 
     tracks.sort_by(|a, b| {
         let ka = a.artist.clone().unwrap_or_default().to_lowercase();
         let kb = b.artist.clone().unwrap_or_default().to_lowercase();
-        ka.cmp(&kb).then_with(|| a.title.to_lowercase().cmp(&b.title.to_lowercase()))
+        ka.cmp(&kb)
+            .then_with(|| a.title.to_lowercase().cmp(&b.title.to_lowercase()))
     });
 
     let bytes: u64 = tracks.iter().map(|t| t.bytes).sum();
@@ -219,22 +268,37 @@ fn is_native(file: String) -> bool {
 /// Decode anything symphonia understands into a 16-bit WAV in the cache dir and
 /// return its absolute path. Returns `None` when the format is native and needs
 /// no conversion.
-#[tauri::command]
+///
+/// Runs off the main thread: a long mix takes minutes to decode.
+#[tauri::command(async)]
 fn prepare(app: AppHandle, src: String, file: String) -> Result<Option<String>, String> {
     if core::is_native(&file) {
         return Ok(None);
     }
+    let name = safe_name(&file).ok_or_else(|| format!("invalid file name: {file}"))?;
     let dir = if src == "add" {
         added_dir(&app)
     } else {
         bundled_dir(&app).ok_or_else(|| "bundled library missing".to_string())?
     };
-    let input = dir.join(&file);
-    if !input.is_file() {
+    let input = dir.join(&name);
+    let meta = std::fs::metadata(&input).map_err(|_| format!("not found: {}", input.display()))?;
+    if !meta.is_file() {
         return Err(format!("not found: {}", input.display()));
     }
 
-    let out_name = format!("{}.wav", core::scan::key_for(&file, None));
+    // The key covers mtime and size as well as the name: replacing a track with
+    // a different file of the same name must not keep serving the old WAV.
+    let mtime_ms = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let out_name = format!(
+        "{}.wav",
+        core::scan::transcode_key(&name, mtime_ms, meta.len())
+    );
     let out = transcode_dir(&app).join(out_name);
     if !out.is_file() {
         core::decode_to_wav(&input, &out).map_err(|e| e.to_string())?;
@@ -247,7 +311,9 @@ fn prepare(app: AppHandle, src: String, file: String) -> Result<Option<String>, 
 
 /// Evict the oldest transcodes until the cache is back under `cap_bytes`.
 fn trim_cache(dir: &Path, cap_bytes: u64) {
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
     let mut files: Vec<(std::time::SystemTime, u64, PathBuf)> = rd
         .filter_map(|e| e.ok())
         .filter_map(|e| {
@@ -275,7 +341,8 @@ fn trim_cache(dir: &Path, cap_bytes: u64) {
     }
 }
 
-#[tauri::command]
+/// Runs off the main thread: the FFT analysis takes seconds on a long track.
+#[tauri::command(async)]
 fn fingerprint(path: String) -> Result<core::Fingerprint, String> {
     core::fingerprint(Path::new(&path)).map_err(|e| e.to_string())
 }
@@ -304,7 +371,12 @@ fn storage(app: AppHandle) -> Storage {
         }
     }
     let (free, total) = free_space(&dir);
-    Storage { added_count: count, added_bytes: bytes, free_bytes: free, total_bytes: total }
+    Storage {
+        added_count: count,
+        added_bytes: bytes,
+        free_bytes: free,
+        total_bytes: total,
+    }
 }
 
 fn free_space(_p: &Path) -> (u64, u64) {
@@ -321,7 +393,13 @@ fn pick_songs(app: AppHandle) -> Result<Vec<String>, String> {
     let picked = app
         .dialog()
         .file()
-        .add_filter("Audio", &["mp3", "webm", "flac", "m4a", "ogg", "opus", "wav", "aac", "aiff", "aif", "wma", "ape", "alac", "caf", "mka", "wv", "tta", "caf"])
+        .add_filter(
+            "Audio",
+            &[
+                "mp3", "webm", "flac", "m4a", "ogg", "opus", "wav", "aac", "aiff", "aif", "wma",
+                "ape", "alac", "caf", "mka", "wv", "tta", "caf",
+            ],
+        )
         .blocking_pick_files();
 
     let Some(paths) = picked else {
@@ -331,7 +409,9 @@ fn pick_songs(app: AppHandle) -> Result<Vec<String>, String> {
     let dest = added_dir(&app);
     let mut names = Vec::new();
     for fp in paths {
-        let Some(src) = fp.into_path().ok() else { continue };
+        let Some(src) = fp.into_path().ok() else {
+            continue;
+        };
         let Some(name) = src.file_name().map(|n| n.to_string_lossy().to_string()) else {
             continue;
         };
@@ -351,7 +431,10 @@ fn unique_path(dir: &Path, name: &str) -> PathBuf {
         return target;
     }
     let p = Path::new(name);
-    let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "track".into());
+    let stem = p
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "track".into());
     let ext = p.extension().map(|e| e.to_string_lossy().to_string());
     for i in 2..9999 {
         let candidate = match &ext {
@@ -368,8 +451,12 @@ fn unique_path(dir: &Path, name: &str) -> PathBuf {
 
 #[tauri::command]
 fn remove_added(app: AppHandle, file: String) -> bool {
-    let p = added_dir(&app).join(file);
-    std::fs::remove_file(p).is_ok()
+    // The page supplies this name, so it must not be able to reach outside the
+    // added-songs folder with `..` or an absolute path.
+    let Some(name) = safe_name(&file) else {
+        return false;
+    };
+    std::fs::remove_file(added_dir(&app).join(name)).is_ok()
 }
 
 #[tauri::command]
@@ -432,7 +519,11 @@ fn set(app: AppHandle, key: String, value: serde_json::Value) {
 
 #[tauri::command]
 fn set_theme(app: AppHandle, mode: String) {
-    let theme = if mode == "dark" { Theme::Dark } else { Theme::Light };
+    let theme = if mode == "dark" {
+        Theme::Dark
+    } else {
+        Theme::Light
+    };
     if let Some(w) = app.get_webview_window("main") {
         w.set_theme(Some(theme)).ok();
     }
@@ -497,11 +588,12 @@ fn main() {
                 proxy::start(roots)
             });
             load_settings(&handle);
-            let prior: PriorSettings =
-                serde_json::from_value(get("theme".into(), None)).unwrap_or(PriorSettings { theme: None });
+            let prior: PriorSettings = serde_json::from_value(get("theme".into(), None))
+                .unwrap_or(PriorSettings { theme: None });
             let dark = prior.theme.as_deref() == Some("dark");
             if let Some(w) = app.get_webview_window("main") {
-                w.set_theme(Some(if dark { Theme::Dark } else { Theme::Light })).ok();
+                w.set_theme(Some(if dark { Theme::Dark } else { Theme::Light }))
+                    .ok();
             }
             // Bind the OS media controls to the main window. Must run after the
             // window exists (SMTC needs its HWND) and before the UI can play.
@@ -529,7 +621,7 @@ fn main() {
             net::yt_search,
             net::yt_resolve,
             net::yt_audio,
-        net::yt_download
+            net::yt_download
         ])
         .run(tauri::generate_context!())
         .expect("failed to start MEASURED");

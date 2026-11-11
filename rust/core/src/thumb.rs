@@ -59,5 +59,9 @@ pub fn avg_color_path(src: &Path) -> Result<[u8; 3]> {
 
 /// Detect whether a byte blob is an image at all — used before writing a cover.
 pub fn sniff(src: &Path) -> Option<ImageFormat> {
-    image::ImageReader::open(src).ok()?.with_guessed_format().ok()?.format()
+    image::ImageReader::open(src)
+        .ok()?
+        .with_guessed_format()
+        .ok()?
+        .format()
 }

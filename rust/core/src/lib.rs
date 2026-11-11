@@ -12,7 +12,9 @@ pub mod thumb;
 
 pub use decode::{decode_to_wav, duration_ms, Pcm};
 pub use fp::{fingerprint, Fingerprint};
-pub use scan::{parse_name, scan_dir, Library, Track};
+pub use scan::{
+    parse_name, scan_dir, scan_dir_cached, transcode_key, DurationCache, Library, Track,
+};
 pub use thumb::{avg_color, make_thumb};
 
 /// Formats the browser engine plays unaided — the page hands these straight to

@@ -29,13 +29,11 @@ fn text_of(node: &Value) -> String {
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
         .or_else(|| {
-            node.get("runs")
-                .and_then(|r| r.as_array())
-                .map(|runs| {
-                    runs.iter()
-                        .filter_map(|r| r.get("text").and_then(|t| t.as_str()))
-                        .collect::<String>()
-                })
+            node.get("runs").and_then(|r| r.as_array()).map(|runs| {
+                runs.iter()
+                    .filter_map(|r| r.get("text").and_then(|t| t.as_str()))
+                    .collect::<String>()
+            })
         })
         .unwrap_or_default()
 }
@@ -195,7 +193,9 @@ fn cpn() -> String {
         ^ (std::process::id() as u64).rotate_left(17);
     let mut out = String::with_capacity(16);
     for _ in 0..16 {
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         out.push(A[(seed >> 33) as usize % A.len()] as char);
     }
     out
@@ -218,9 +218,17 @@ fn pick_audio(json: &Value) -> Option<ResolvedAudio> {
     let mut best: Option<(i32, ResolvedAudio)> = None;
 
     for key in ["adaptiveFormats", "formats"] {
-        let Some(list) = sd.get(key).and_then(|v| v.as_array()) else { continue };
+        let Some(list) = sd.get(key).and_then(|v| v.as_array()) else {
+            continue;
+        };
         for f in list {
-            let Some(url) = f.get("url").and_then(|v| v.as_str()).filter(|u| u.starts_with("http")) else { continue };
+            let Some(url) = f
+                .get("url")
+                .and_then(|v| v.as_str())
+                .filter(|u| u.starts_with("http"))
+            else {
+                continue;
+            };
             let mime = f.get("mimeType").and_then(|v| v.as_str()).unwrap_or("");
             if !mime.starts_with("audio/") && key == "adaptiveFormats" {
                 continue;
@@ -235,8 +243,13 @@ fn pick_audio(json: &Value) -> Option<ResolvedAudio> {
                 itag,
                 mime: mime.to_string(),
                 bitrate: f.get("bitrate").and_then(|v| v.as_i64()).unwrap_or(0),
-                expires_in: sd.get("expiresInSeconds").and_then(|v| v.as_str().and_then(|s| s.parse::<i64>().ok())).unwrap_or(0),
-                content_length: f.get("contentLength").and_then(|v| v.as_str().and_then(|s| s.parse::<i64>().ok())),
+                expires_in: sd
+                    .get("expiresInSeconds")
+                    .and_then(|v| v.as_str().and_then(|s| s.parse::<i64>().ok()))
+                    .unwrap_or(0),
+                content_length: f
+                    .get("contentLength")
+                    .and_then(|v| v.as_str().and_then(|s| s.parse::<i64>().ok())),
                 length_seconds: json
                     .get("videoDetails")
                     .and_then(|v| v.get("lengthSeconds"))
@@ -292,7 +305,11 @@ pub async fn resolve_audio(id: &str) -> Result<ResolvedAudio, String> {
     }
     let json: Value = resp.json().await.map_err(|e| format!("bad json: {e}"))?;
 
-    if let Some(status) = json.get("playabilityStatus").and_then(|s| s.get("status")).and_then(|s| s.as_str()) {
+    if let Some(status) = json
+        .get("playabilityStatus")
+        .and_then(|s| s.get("status"))
+        .and_then(|s| s.as_str())
+    {
         if status != "OK" {
             let why = json
                 .get("playabilityStatus")
@@ -303,7 +320,8 @@ pub async fn resolve_audio(id: &str) -> Result<ResolvedAudio, String> {
         }
     }
 
-    let mut out = pick_audio(&json).ok_or_else(|| "no audio format with a URL (ciphered)".to_string())?;
+    let mut out =
+        pick_audio(&json).ok_or_else(|| "no audio format with a URL (ciphered)".to_string())?;
     let len = out.content_length.unwrap_or(10_000_000);
     let sep = "&";
     out.url = format!("{}{}cpn={}&range=0-{}", out.url, sep, cpn(), len);
@@ -317,7 +335,11 @@ pub async fn yt_resolve(id: String) -> Result<ResolvedAudio, String> {
 }
 
 fn check_id(id: &str) -> Result<(), String> {
-    if id.len() != 11 || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+    if id.len() != 11
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
         return Err("bad video id".into());
     }
     Ok(())
@@ -375,7 +397,10 @@ pub async fn yt_audio(app: tauri::AppHandle, id: String) -> Result<String, Strin
     let out = cmd.output().map_err(|e| format!("spawn failed: {e}"))?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
-        return Err(format!("yt-dlp: {}", err.lines().last().unwrap_or("failed")));
+        return Err(format!(
+            "yt-dlp: {}",
+            err.lines().last().unwrap_or("failed")
+        ));
     }
     let url = String::from_utf8_lossy(&out.stdout)
         .lines()
@@ -395,7 +420,11 @@ pub fn yt_download(
 ) -> Result<String, String> {
     use tauri::Manager;
 
-    if id.len() != 11 || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+    if id.len() != 11
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
         return Err("bad video id".into());
     }
     let exe = ytdlp_path(&app).ok_or_else(|| "yt-dlp.exe is missing".to_string())?;
@@ -419,7 +448,9 @@ pub fn yt_download(
         })
         .collect();
     clean = clean.split_whitespace().collect::<Vec<_>>().join(" ");
-    let clean = clean.trim_matches(|c: char| c == '.' || c == ' ').to_string();
+    let clean = clean
+        .trim_matches(|c: char| c == '.' || c == ' ')
+        .to_string();
     let stem = if clean.is_empty() {
         format!("YouTube {id}")
     } else {
@@ -449,7 +480,14 @@ pub fn yt_download(
     let out = cmd.output().map_err(|e| format!("spawn failed: {e}"))?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
-        let tail: String = err.chars().rev().take(240).collect::<Vec<_>>().into_iter().rev().collect();
+        let tail: String = err
+            .chars()
+            .rev()
+            .take(240)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
         return Err(format!("download failed: {}", tail.trim()));
     }
 
