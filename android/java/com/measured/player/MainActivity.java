@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ApplicationInfo;
 import android.database.Cursor;
 import android.graphics.Color;
 import android.media.MediaMetadataRetriever;
@@ -32,14 +33,17 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * MEASURED — offline local player shell.
  *
  * Everything ships inside the APK: the UI lives in assets/player, the default
  * library in assets/songs. Songs the user adds are copied into filesDir/songs.
- * The page is loaded from file:/// so playback needs no network stack at all —
- * the app has no INTERNET permission.
+ * The page is loaded from file:///, so the local library plays with no network at
+ * all; only the YouTube shelf and downloads reach the INTERNET permission the
+ * manifest declares.
  */
 public class MainActivity extends Activity {
 
@@ -55,6 +59,10 @@ public class MainActivity extends Activity {
     private WebView web;
     private SharedPreferences prefs;
 
+    /* Importing and transcoding are disk-bound. Running them on the JS bridge
+       thread would stall every other bridge call behind a multi-second decode. */
+    private static final ExecutorService IO = Executors.newFixedThreadPool(2);
+
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
     protected void onCreate(Bundle state) {
@@ -63,7 +71,6 @@ public class MainActivity extends Activity {
         final boolean dark0 = "dark".equals(prefs.getString("theme", "light"));
 
         getWindow().setBackgroundDrawableResource(dark0 ? R.color.ink : R.color.paper);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         web = new WebView(this);
         web.setBackgroundColor(Color.parseColor(dark0 ? "#131210" : "#e8e4db"));
@@ -81,8 +88,11 @@ public class MainActivity extends Activity {
         s.setCacheMode(WebSettings.LOAD_NO_CACHE);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
 
-        android.webkit.WebView.setWebContentsDebuggingEnabled(true); // TEMP: lets adb-forwarded CDP drive the page
-    web.addJavascriptInterface(new Bridge(), "AndroidBridge");
+        /* Debug builds only. A release APK with the inspector left on lets any adb
+           client drive the page and reach every @JavascriptInterface below. */
+        boolean debuggable = (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+        WebView.setWebContentsDebuggingEnabled(debuggable);
+        web.addJavascriptInterface(new Bridge(), "AndroidBridge");
 
 
         // Transport buttons from the notification, headset and Bluetooth route back
@@ -218,20 +228,36 @@ public class MainActivity extends Activity {
         }
 
         /** Converts a container the WebView cannot decode into a cached WAV.
-            @return file:// URL, or null when this phone cannot read the format. */
+            Answers asynchronously through PlayerAPI.prepareDone(token, url):
+            a synchronous return would pin the JS bridge for the whole decode,
+            which runs for seconds on a long ALAC or WMA track. */
         @JavascriptInterface
-        public String prepare(String src, String name) {
-            try {
-                String clean = safeName(name);
-                if ("add".equals(src)) {
-                    File f = new File(addedDir(), clean);
-                    String r = f.isFile() ? Transcode.prepare(MainActivity.this, null, f) : "NOFILE " + f.getAbsolutePath();
-                    return r != null && r.startsWith("file:") ? r : null;
+        public void prepare(final String src, final String name, final String token) {
+            IO.execute(new Runnable() {
+                public void run() {
+                    String url = null;
+                    try {
+                        String clean = safeName(name);
+                        if ("add".equals(src)) {
+                            File f = new File(addedDir(), clean);
+                            String r = f.isFile() ? Transcode.prepare(MainActivity.this, null, f) : null;
+                            url = r != null && r.startsWith("file:") ? r : null;
+                        } else {
+                            url = Transcode.prepare(MainActivity.this, "songs/" + clean, null);
+                        }
+                    } catch (Throwable ignored) {
+                        url = null;
+                    }
+                    final String js = "(window.PlayerAPI&&PlayerAPI.prepareDone)?PlayerAPI.prepareDone("
+                            + JSONObject.quote(token) + ","
+                            + (url == null ? "null" : JSONObject.quote(url)) + "):0";
+                    runOnUiThread(new Runnable() {
+                        public void run() {
+                            if (web != null) web.evaluateJavascript(js, null);
+                        }
+                    });
                 }
-                return Transcode.prepare(MainActivity.this, "songs/" + clean, null);
-            } catch (Exception e) {
-                return null;
-            }
+            });
         }
 
         @JavascriptInterface
@@ -314,7 +340,16 @@ public class MainActivity extends Activity {
     }
 
 
-        public String version() { return "1.0.0"; }
+        /** The version the APK was actually built with. build.cjs injects it from
+            tauri.conf.json, so a hardcoded string here drifted from the release. */
+        @JavascriptInterface
+        public String version() {
+            try {
+                return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+            } catch (Exception e) {
+                return "";
+            }
+        }
     }
 
     @Override
@@ -322,7 +357,7 @@ public class MainActivity extends Activity {
         super.onActivityResult(req, res, data);
         if (req != REQ_PICK || res != RESULT_OK || data == null) return;
 
-        List<Uri> uris = new ArrayList<>();
+        final List<Uri> uris = new ArrayList<>();
         if (data.getClipData() != null) {
             for (int i = 0; i < data.getClipData().getItemCount(); i++) {
                 uris.add(data.getClipData().getItemAt(i).getUri());
@@ -331,18 +366,24 @@ public class MainActivity extends Activity {
             uris.add(data.getData());
         }
 
-        int copied = 0;
-        for (Uri u : uris) {
-            try {
-                if (copyIn(u)) copied++;
-            } catch (Exception e) { /* skip this file, keep the rest */ }
-        }
-        final int n = copied;
-        runOnUiThread(new Runnable() {
+        /* Copy off the UI thread: a multi-file import is seconds of disk I/O and
+           used to freeze the page until the last one landed. */
+        IO.execute(new Runnable() {
             public void run() {
-                toast(n == 0 ? "Nothing imported" : n + " song" + (n == 1 ? "" : "s") + " added");
-                web.evaluateJavascript(
-                    "(window.PlayerAPI && PlayerAPI.onSongsChanged ? PlayerAPI.onSongsChanged() : 0)", null);
+                int copied = 0;
+                for (Uri u : uris) {
+                    try {
+                        if (copyIn(u)) copied++;
+                    } catch (Exception e) { /* skip this file, keep the rest */ }
+                }
+                final int n = copied;
+                runOnUiThread(new Runnable() {
+                    public void run() {
+                        toast(n == 0 ? "Nothing imported" : n + " song" + (n == 1 ? "" : "s") + " added");
+                        if (web != null) web.evaluateJavascript(
+                            "(window.PlayerAPI && PlayerAPI.onSongsChanged ? PlayerAPI.onSongsChanged() : 0)", null);
+                    }
+                });
             }
         });
     }
@@ -419,17 +460,33 @@ public class MainActivity extends Activity {
         return (" " + AUDIO_EXT + " ").contains(" " + ext + " ");
     }
 
+    /* MediaMetadataRetriever opens and parses the file, and it is the slowest part
+       of listing added songs. Key on the trio that changes when a file is
+       replaced, so a repeat scan never re-decodes. */
+    private static final java.util.Map<String, Long> DUR_CACHE = new java.util.HashMap<>();
+
     private static long durationOf(File f) {
+        final String key = f.getName() + "|" + f.lastModified() + "|" + f.length();
+        synchronized (DUR_CACHE) {
+            Long hit = DUR_CACHE.get(key);
+            if (hit != null) return hit;
+        }
+        long secs;
         MediaMetadataRetriever r = new MediaMetadataRetriever();
         try {
             r.setDataSource(f.getAbsolutePath());
             String d = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
-            return d == null ? 0 : Long.parseLong(d) / 1000;
+            secs = d == null ? 0 : Long.parseLong(d) / 1000;
         } catch (Exception e) {
-            return 0;
+            secs = 0;
         } finally {
             try { r.release(); } catch (Exception ignored) { }
         }
+        synchronized (DUR_CACHE) {
+            if (DUR_CACHE.size() > 2000) DUR_CACHE.clear();
+            DUR_CACHE.put(key, secs);
+        }
+        return secs;
     }
 
     private String readAsset(String path) {

@@ -33,6 +33,30 @@ final class Transcode {
         return dir;
     }
 
+    /* Same ceiling as the desktop transcode cache, so a phone and a laptop forget
+       converted audio in the same order instead of one growing without bound. */
+    private static final long CACHE_CAP = 2L * 1024 * 1024 * 1024;
+
+    /** Delete the oldest WAVs until the cache fits under the cap again. */
+    private static void prune(Context ctx) {
+        File[] files = cacheDir(ctx).listFiles();
+        if (files == null || files.length == 0) return;
+        long total = 0;
+        for (File f : files) total += f.length();
+        if (total <= CACHE_CAP) return;
+        java.util.Arrays.sort(files, new java.util.Comparator<File>() {
+            public int compare(File a, File b) {
+                return Long.compare(a.lastModified(), b.lastModified());
+            }
+        });
+        for (File f : files) {
+            if (total <= CACHE_CAP) break;
+            if (f.getName().endsWith(".part")) continue;
+            long len = f.length();
+            if (f.delete()) total -= len;
+        }
+    }
+
     static String keyFor(String name) {
         try {
             MessageDigest md = MessageDigest.getInstance("MD5");
@@ -50,6 +74,7 @@ final class Transcode {
         String tag = assetName != null ? "a:" + assetName : "f:" + (plain != null ? plain.getName() : "?");
         File out = new File(cacheDir(ctx), keyFor(tag) + ".wav");
         if (out.exists() && out.length() > 4096) return "file://" + out.getAbsolutePath();
+        prune(ctx);
 
         MediaExtractor ex = new MediaExtractor();
         AssetFileDescriptor afd = null;

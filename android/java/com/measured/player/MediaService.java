@@ -5,8 +5,11 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.media.AudioManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.MediaMetadata;
@@ -47,6 +50,20 @@ public class MediaService extends Service {
     private String artKey = "";
     private Bitmap art = null;
 
+    private AudioManager am;
+    private AudioManager.OnAudioFocusChangeListener focus;
+    private Object focusRequest;          // AudioFocusRequest on API 26+, unused below
+    private boolean noisyOn = false;
+
+    /* Headphones unplugged: the page must stop, or the song keeps playing out of
+       the phone speaker in the middle of a bus. */
+    private final BroadcastReceiver noisy = new BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) {
+            playing = false;
+            cmd("pause", 0);
+        }
+    };
+
     static void push(Context ctx, String json) {
         Intent i = new Intent(ctx, MediaService.class).setAction(A_UPDATE).putExtra("json", json);
         if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i);
@@ -74,9 +91,63 @@ public class MediaService extends Service {
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         session.setSessionActivity(openPi);
         session.setActive(true);
+
+        /* Music focus is what makes a call or another player stop us, instead of
+           both apps talking at once. */
+        am = (AudioManager) getSystemService(AUDIO_SERVICE);
+        focus = new AudioManager.OnAudioFocusChangeListener() {
+            @Override public void onAudioFocusChange(int change) {
+                if (change == AudioManager.AUDIOFOCUS_LOSS
+                        || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+                    playing = false;
+                    cmd("pause", 0);
+                }
+                /* LOSS_TRANSIENT_CAN_DUCK needs no action here: the framework has
+                   already attenuated this app's stream, and pausing for a
+                   notification blip would be the wrong trade. */
+            }
+        };
+        IntentFilter filter = new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(noisy, filter, Context.RECEIVER_NOT_EXPORTED);
+        else registerReceiver(noisy, filter);
+        noisyOn = true;
+    }
+
+    private void takeFocus() {
+        if (am == null) return;
+        if (Build.VERSION.SDK_INT >= 26) {
+            android.media.AudioFocusRequest req = new android.media.AudioFocusRequest.Builder(
+                    AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(new android.media.AudioAttributes.Builder()
+                            .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .build())
+                    .setOnAudioFocusChangeListener(focus)
+                    .setWillPauseWhenDucked(false)
+                    .build();
+            focusRequest = req;
+            am.requestAudioFocus(req);
+        } else {
+            am.requestAudioFocus(focus, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
+        }
+    }
+
+    private void dropFocus() {
+        if (am == null) return;
+        if (Build.VERSION.SDK_INT >= 26) {
+            android.media.AudioFocusRequest req = (android.media.AudioFocusRequest) focusRequest;
+            if (req != null) am.abandonAudioFocusRequest(req);
+            focusRequest = null;
+        } else {
+            am.abandonAudioFocus(focus);
+        }
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
+        /* Android 12+ kills a foreground service that has not posted its notification
+           within a few seconds. Post a placeholder before touching the payload, so a
+           malformed push cannot take the service, and playback, down with it. */
+        try { startForeground(NOTIF_ID, build()); } catch (Throwable ignored) { }
         if (intent == null) return START_NOT_STICKY;
         String action = intent.getAction();
         if (A_CMD.equals(action)) {
@@ -94,6 +165,7 @@ public class MediaService extends Service {
             if (!a.equals(artKey)) { artKey = a; art = decodeArt(a); }
             publish();
             startForeground(NOTIF_ID, build());
+            if (playing) takeFocus(); else dropFocus();
         } catch (Throwable ignored) { /* a bad payload must not kill playback */ }
         return START_NOT_STICKY;
     }
@@ -101,8 +173,8 @@ public class MediaService extends Service {
     private void cmd(String c, long arg) {
         if (c == null) return;
         // optimistic local flip so the card reacts instantly, the page re-syncs after
-        if ("play".equals(c)) playing = true;
-        else if ("pause".equals(c)) playing = false;
+        if ("play".equals(c)) { playing = true; takeFocus(); }
+        else if ("pause".equals(c)) { playing = false; dropFocus(); }
         try { publish(); startForeground(NOTIF_ID, build()); } catch (Throwable ignored) { }
         if (sink != null) sink.exec(c, arg);
     }
@@ -210,6 +282,11 @@ public class MediaService extends Service {
     }
 
     @Override public void onDestroy() {
+        if (noisyOn) {
+            try { unregisterReceiver(noisy); } catch (Throwable ignored) { }
+            noisyOn = false;
+        }
+        dropFocus();
         try {
             if (session != null) {
                 session.setActive(false);

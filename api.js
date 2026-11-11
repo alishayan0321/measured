@@ -1,6 +1,5 @@
 /* One adapter for the places this page runs:
      web      http://127.0.0.1:8142  — Node server does the scanning
-     electron same Node server + native dialogs (DesktopBridge via preload)
      tauri    Rust core, no server: asset protocol + invoke commands
      android  file:///android_asset  — native bridge, no server, no network
    The UI only ever talks to window.PlayerAPI. */
@@ -8,15 +7,14 @@
   'use strict';
 
   const android = window.AndroidBridge || null;
-  const electron = window.DesktopBridge || null;
-  const tauri = !android && !electron && window.__TAURI__ ? window.__TAURI__ : null;
+  const tauri = !android && window.__TAURI__ ? window.__TAURI__ : null;
   const invoke = tauri && tauri.core ? tauri.core.invoke : null;
   const assetUrl = tauri && tauri.core && tauri.core.convertFileSrc
     ? tauri.core.convertFileSrc
     : (p) => p;
 
-  const platform = android ? 'android' : (electron || tauri) ? 'desktop' : 'web';
-  const engine = tauri ? 'tauri' : electron ? 'electron' : platform;
+  const platform = android ? 'android' : tauri ? 'desktop' : 'web';
+  const engine = tauri ? 'tauri' : platform;
   const PN = window.ParseName || null;
 
   const listeners = new Set();
@@ -48,27 +46,49 @@
       (a.artist + a.title).localeCompare(b.artist + b.title, undefined, { sensitivity: 'base' }));
   }
 
+  /* Both async bridges answer through a token: the native side hops to a worker
+     and calls back into the page when the job is done. A blocking call would
+     freeze the UI for the seconds a stream resolve or a transcode takes. */
   const YT_PENDING = new Map();
-let ytSeq = 0;
+  let ytSeq = 0;
 
-function ytCall(method, ...args) {
-  return new Promise((resolve) => {
-    const token = 'y' + (++ytSeq) + Date.now().toString(36);
-    YT_PENDING.set(token, resolve);
-    // YouTube: desktop uses bundled yt-dlp, Android uses NewPipeExtractor.
-    setTimeout(() => {
-      if (YT_PENDING.has(token)) { YT_PENDING.delete(token); resolve(null); }
-    }, 45000);
-    try {
-      android[method].apply(android, args.concat([token]));
-    } catch (e) {
-      YT_PENDING.delete(token);
-      resolve(null);
-    }
-  });
-}
+  function ytCall(method, ...args) {
+    return new Promise((resolve) => {
+      const token = 'y' + (++ytSeq) + Date.now().toString(36);
+      YT_PENDING.set(token, resolve);
+      // YouTube: desktop uses bundled yt-dlp, Android uses NewPipeExtractor.
+      setTimeout(() => {
+        if (YT_PENDING.has(token)) { YT_PENDING.delete(token); resolve(null); }
+      }, 45000);
+      try {
+        android[method].apply(android, args.concat([token]));
+      } catch (e) {
+        YT_PENDING.delete(token);
+        resolve(null);
+      }
+    });
+  }
 
-const api = {
+  const PREPARE_PENDING = new Map();
+  let prepareSeq = 0;
+
+  function prepareCall(src, name) {
+    return new Promise((resolve) => {
+      const token = 'p' + (++prepareSeq) + Date.now().toString(36);
+      PREPARE_PENDING.set(token, resolve);
+      setTimeout(() => {
+        if (PREPARE_PENDING.has(token)) { PREPARE_PENDING.delete(token); resolve(null); }
+      }, 120000);
+      try {
+        android.prepare(src, name, token);
+      } catch (e) {
+        PREPARE_PENDING.delete(token);
+        resolve(null);
+      }
+    });
+  }
+
+  const api = {
     platform,
     engine,
 
@@ -136,61 +156,65 @@ const api = {
     },
 
     /** True when this build can save a streamed song into the local library. */
-    // YouTube: desktop uses bundled yt-dlp, Android uses NewPipeExtractor.
-  // Desktop resolves streams with bundled yt-dlp; Android uses NewPipeExtractor
-  // inside the WebView bridge. Both answer through the same two helpers, and the
-  // Android side answers asynchronously through a token, because a blocking call
-  // would freeze the page for the five or so seconds extraction takes.
-  async ytSearch(q, limit) {
-    if (tauri) {
-      try { return await invoke('yt_search', { query: q, limit: limit || 24 }); } catch (e) { return []; }
-    }
-    if (android && android.ytSearch) return (await ytCall('ytSearch', q, String(limit || 24))) || [];
-    return [];
-  },
+    canDownload() { return !!(tauri || (android && android.ytDownload)); },
 
-  async ytAudio(id) {
-    if (tauri) {
-      try { const u = await invoke('yt_audio', { id }); return u ? { url: u } : null; } catch (e) { return null; }
-    }
-    if (android && android.ytAudio) return await ytCall('ytAudio', id);
-    return null;
-  },
+    async ytSearch(q, limit) {
+      if (tauri) {
+        try { return await invoke('yt_search', { query: q, limit: limit || 24 }); } catch (e) { return []; }
+      }
+      if (android && android.ytSearch) return (await ytCall('ytSearch', q, String(limit || 24))) || [];
+      return [];
+    },
 
-  // Desktop only: the loopback proxy that re-serves audio with CORS headers, so
-  // Web Audio may read it. Empty string when the platform has no proxy.
-  async proxyBase() {
-    if (tauri) { try { return (await invoke('proxy_base')) || ''; } catch (e) { return ''; } }
-    return '';
-  },
+    async ytAudio(id) {
+      if (tauri) {
+        try { const u = await invoke('yt_audio', { id }); return u ? { url: u } : null; } catch (e) { return null; }
+      }
+      if (android && android.ytAudio) return await ytCall('ytAudio', id);
+      return null;
+    },
 
-  // Called by the Android side when a bridge job finishes.
-  ytDone(token, ok, payload) {
-    const p = YT_PENDING.get(token);
-    if (!p) return 0;
-    YT_PENDING.delete(token);
-    if (!ok) { p(null); return 1; }
-    let v = payload;
-    try { v = JSON.parse(payload); } catch (e) { /* plain string */ }
-    p(v);
-    return 2;
-  },
+    // Desktop only: the loopback proxy that re-serves audio with CORS headers, so
+    // Web Audio may read it. Empty string when the platform has no proxy.
+    async proxyBase() {
+      if (tauri) { try { return (await invoke('proxy_base')) || ''; } catch (e) { return ''; } }
+      return '';
+    },
 
-  canDownload() { return !!(tauri || (android && android.ytDownload)); // Android resolves via NewPipeExtractor
+    // Called by the Android side when a bridge job finishes.
+    ytDone(token, ok, payload) {
+      const p = YT_PENDING.get(token);
+      if (!p) return 0;
+      YT_PENDING.delete(token);
+      if (!ok) { p(null); return 1; }
+      let v = payload;
+      try { v = JSON.parse(payload); } catch (e) { /* plain string */ }
+      p(v);
+      return 2;
+    },
+
+    // Called by the Android side when a transcode finishes; null means the phone
+    // cannot decode that container.
+    prepareDone(token, url) {
+      const p = PREPARE_PENDING.get(token);
+      if (!p) return 0;
+      PREPARE_PENDING.delete(token);
+      p(url || null);
+      return 1;
     },
 
     /** Downloads a streamed song into the added-songs folder. Returns the file name or null. */
     async download(video) {
-    if (android && android.ytDownload) {
-      const name = await ytCall('ytDownload', JSON.stringify({
-        id: video.id,
-        title: video.title || '',
-        author: video.author || '',
-      }));
-      if (!name) return null;
-      emit();
-      return name;
-    }
+      if (android && android.ytDownload) {
+        const name = await ytCall('ytDownload', JSON.stringify({
+          id: video.id,
+          title: video.title || '',
+          author: video.author || '',
+        }));
+        if (!name) return null;
+        emit();
+        return name;
+      }
       if (!tauri || !video || !video.id) return null;
       try {
         const name = await invoke('yt_download', {
@@ -208,7 +232,6 @@ const api = {
     /** Opens the OS file picker. Returns true when a picker was shown. */
     async pickSongs() {
       if (platform === 'android') { android.pickSongs(); return true; }
-      if (engine === 'electron') { electron.pickSongs(); return true; }
       if (tauri) {
         const added = await invoke('pick_songs');
         if (added && added.length) emit();
@@ -221,12 +244,6 @@ const api = {
       if (platform === 'android') {
         try { return JSON.parse(android.storage() || '{}'); } catch (e) { return {}; }
       }
-      if (engine === 'electron') {
-        try {
-          const s = electron.storage();          // already an object over IPC
-          return s && typeof s === 'object' ? s : {};
-        } catch (e) { return {}; }
-      }
       if (tauri) {
         try { return await invoke('storage'); } catch (e) { return {}; }
       }
@@ -235,14 +252,12 @@ const api = {
 
     async removeAdded(file) {
       if (platform === 'android') return android.removeAdded(file);
-      if (engine === 'electron') return electron.removeAdded(file);
       if (tauri) { const ok = await invoke('remove_added', { file }); emit(); return ok ? '{"ok":true}' : '{"ok":false}'; }
       return '{"ok":false}';
     },
 
     async clearAdded() {
       if (platform === 'android') return android.clearAdded();
-      if (engine === 'electron') return electron.clearAdded();
       if (tauri) { const n = await invoke('clear_added'); emit(); return '{"removed":' + n + '}'; }
       return '{"removed":0}';
     },
@@ -250,7 +265,6 @@ const api = {
     get(key, fallback) {
       let v = null;
       if (platform === 'android') { try { v = android.get(key); } catch (e) { v = null; } }
-      else if (engine === 'electron') { try { v = electron.get(key); } catch (e) { v = null; } }
       else { try { v = localStorage.getItem(key); } catch (e) { v = null; } }
       return v === null || v === '' || v === undefined ? fallback : v;
     },
@@ -258,7 +272,6 @@ const api = {
     set(key, value) {
       const v = String(value);
       if (platform === 'android') { try { android.set(key, v); return; } catch (e) { /* fall through */ } }
-      else if (engine === 'electron') { try { electron.set(key, v); return; } catch (e) { /* fall through */ } }
       try { localStorage.setItem(key, v); } catch (e) { /* private mode */ }
       if (tauri) { try { invoke('set', { key, value: v }); } catch (e) { /* ignore */ } }
     },
@@ -266,7 +279,6 @@ const api = {
     /** Keeps the OS window/status bars in step with the page theme. */
     theme(mode) {
       if (platform === 'android') { try { android.setTheme(mode); } catch (e) { /* ignore */ } }
-      else if (engine === 'electron') { try { electron.setTheme(mode); } catch (e) { /* ignore */ } }
       else if (tauri) { try { invoke('set_theme', { mode }); } catch (e) { /* ignore */ } }
     },
 
@@ -279,18 +291,13 @@ const api = {
     async prepare(track) {
       if (!track) return null;
       if (api.isNative(track.file || '')) return track.url;
-      if (engine === 'electron') {
-        try { return (await electron.prepare(track.src || 'lib', track.file)) || null; } catch (e) { return null; }
-      }
       if (tauri) {
         try {
           const wav = await invoke('prepare', { src: track.src || 'lib', file: track.file });
           return wav ? assetUrl(wav) : null;
         } catch (e) { return null; }
       }
-      if (platform === 'android') {
-        try { return android.prepare(track.src || 'lib', track.file) || null; } catch (e) { return null; }
-      }
+      if (platform === 'android') return prepareCall(track.src || 'lib', track.file);
       return track.url;   // web: hand it to the browser and let it try
     },
 
@@ -299,18 +306,13 @@ const api = {
         element only finds out after the native path already failed. */
     async prepareForce(track) {
       if (!track || !track.file) return null;
-      if (engine === 'electron') {
-        try { return (await electron.prepare(track.src || 'lib', track.file)) || null; } catch (e) { return null; }
-      }
       if (tauri) {
         try {
           const wav = await invoke('prepare', { src: track.src || 'lib', file: track.file, force: true });
           return wav ? assetUrl(wav) : null;
         } catch (e) { return null; }
       }
-      if (platform === 'android') {
-        try { return android.prepare(track.src || 'lib', track.file) || null; } catch (e) { return null; }
-      }
+      if (platform === 'android') return prepareCall(track.src || 'lib', track.file);
       return null;
     },
 
@@ -328,8 +330,7 @@ const api = {
         throw new Error('searchOnline: only the itunes search endpoint is allowed');
       }
       if (tauri) {
-        try { const txt = await invoke('shelf_search', { url }); return JSON.parse(txt); }
-        catch (e) { return { results: [] }; }
+        try { const txt = await invoke('shelf_search', { url }); return JSON.parse(txt); } catch (e) { return { results: [] }; }
       }
       try { const r = await fetch(url); return await r.json(); } catch (e) { return { results: [] }; }
     },
