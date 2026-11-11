@@ -49,6 +49,8 @@ android/libs-expanded/
 android/libs-raw/
 android/_d8test/
 *.jks
+# generated on first android build; the keystore password must never be committed
+android/measured.keystore.pass
 .env
 *.env
 

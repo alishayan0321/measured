@@ -23,7 +23,7 @@ The Windows build needs the WebView2 runtime (present on Windows 11 and current 
 
 ## Features
 
-See [RELEASE-2.0.0.md](https://github.com/alishayan0321/measured/blob/master/RELEASE-2.0.0.md) for the full 2.0.0 feature list: the Rust core, the Tauri desktop build, Nowhere, Likes, Liquid Glass, vinyl scrubbing and Android streaming without a proxy.
+See [RELEASE-2.0.0.md](https://github.com/alishayan0321/measured/blob/master/docs/releases/RELEASE-2.0.0.md) for the full 2.0.0 feature list: the Rust core, the Tauri desktop build, Nowhere, Likes, Liquid Glass, vinyl scrubbing and Android streaming without a proxy.
 
 ## Known limits
 
