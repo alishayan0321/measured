@@ -36,12 +36,9 @@ jobs:
         run: node test/stage.test.cjs
 
   rust-lint:
-    name: rust lint (advisory)
-    # Advisory on purpose: the tree is not rustfmt-clean yet, and
-    # `clippy -D warnings` still reports six findings in rust/core. The checks
-    # run and report on every push; drop continue-on-error in the same change
-    # that formats the sources and clears those findings.
-    continue-on-error: true
+    name: rust lint
+    # Blocking: the tree is rustfmt-clean and clippy is silent on it, so a red
+    # lint job means a real regression rather than pre-existing debt.
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -97,9 +94,7 @@ jobs:
         run: node stage-ui.cjs
       - name: clippy (workspace, strict)
         # The workspace-wide strict lint lives here because the desktop crate
-        # only builds on Windows. Advisory for the same reason as rust-lint:
-        # rust/core still trips -D warnings.
-        continue-on-error: true
+        # only builds on Windows.
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: check
         run: cargo check -p measured-desktop

@@ -16,6 +16,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip"] }
+# yt-dlp runs as a child process; tokio's process driver is what lets it be
+# awaited with a deadline instead of blocking a thread for the whole download.
+tokio = { version = "1", features = ["process", "time"] }
 # OS media controls: Windows SMTC, macOS Now Playing, Linux MPRIS.
 souvlaki = "0.9"
 # Needed to pull the HWND out of the Tauri window for SMTC.

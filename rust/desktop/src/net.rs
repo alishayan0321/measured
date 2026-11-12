@@ -322,7 +322,15 @@ pub async fn resolve_audio(id: &str) -> Result<ResolvedAudio, String> {
 
     let mut out =
         pick_audio(&json).ok_or_else(|| "no audio format with a URL (ciphered)".to_string())?;
-    let len = out.content_length.unwrap_or(10_000_000);
+    // contentLength is missing on many adaptive formats. A flat 10 MB guess cut
+    // long mixes off mid-song, so size the range from bitrate × duration and
+    // only fall back to the old constant when the duration is unknown.
+    let len = out
+        .content_length
+        .unwrap_or_else(|| match out.length_seconds {
+            Some(secs) if secs > 0 => (out.bitrate.max(64_000) * secs / 8).max(1_000_000),
+            _ => 10_000_000,
+        });
     let sep = "&";
     out.url = format!("{}{}cpn={}&range=0-{}", out.url, sep, cpn(), len);
     Ok(out)
@@ -366,6 +374,27 @@ fn ytdlp_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
     dev.is_file().then_some(dev)
 }
 
+/// Run a child process with a hard deadline. yt-dlp can sit on a stalled
+/// socket indefinitely; `kill_on_drop` is what actually reaps it when the
+/// timeout fires, because dropping the future drops the child handle.
+async fn run_with_timeout(
+    mut cmd: tokio::process::Command,
+    secs: u64,
+) -> Result<std::process::Output, String> {
+    cmd.kill_on_drop(true);
+    let child = cmd.spawn().map_err(|e| format!("spawn failed: {e}"))?;
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(secs),
+        child.wait_with_output(),
+    )
+    .await
+    {
+        Ok(Ok(out)) => Ok(out),
+        Ok(Err(e)) => Err(format!("spawn failed: {e}")),
+        Err(_) => Err(format!("yt-dlp timed out after {secs}s")),
+    }
+}
+
 #[tauri::command]
 pub async fn yt_audio(app: tauri::AppHandle, id: String) -> Result<String, String> {
     check_id(&id)?;
@@ -378,7 +407,7 @@ pub async fn yt_audio(app: tauri::AppHandle, id: String) -> Result<String, Strin
 
     let exe = ytdlp_path(&app).ok_or_else(|| "yt-dlp.exe is missing".to_string())?;
 
-    let mut cmd = std::process::Command::new(exe);
+    let mut cmd = tokio::process::Command::new(exe);
     cmd.args([
         "-f",
         "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio",
@@ -390,11 +419,10 @@ pub async fn yt_audio(app: tauri::AppHandle, id: String) -> Result<String, Strin
     ]);
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
 
-    let out = cmd.output().map_err(|e| format!("spawn failed: {e}"))?;
+    let out = run_with_timeout(cmd, 120).await?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
         return Err(format!(
@@ -412,7 +440,7 @@ pub async fn yt_audio(app: tauri::AppHandle, id: String) -> Result<String, Strin
 /// Save a streamed song into the local library (added-songs folder).
 /// Returns the stored file name, which the page then picks up from a reload.
 #[tauri::command]
-pub fn yt_download(
+pub async fn yt_download(
     app: tauri::AppHandle,
     id: String,
     title: String,
@@ -457,7 +485,7 @@ pub fn yt_download(
         clean.chars().take(80).collect::<String>()
     };
 
-    let mut cmd = std::process::Command::new(&exe);
+    let mut cmd = tokio::process::Command::new(&exe);
     cmd.args([
         "-f",
         "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio",
@@ -473,11 +501,10 @@ pub fn yt_download(
     ]);
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
 
-    let out = cmd.output().map_err(|e| format!("spawn failed: {e}"))?;
+    let out = run_with_timeout(cmd, 120).await?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
         let tail: String = err

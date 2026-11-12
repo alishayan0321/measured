@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob: https://i.ytimg.com https://*.ytimg.com https://*.googleusercontent.com; media-src 'self' asset: http://asset.localhost blob: http://127.0.0.1:* https://*.googlevideo.com; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* https://*.googlevideo.com https://*.youtube.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'",
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.youtube.com; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob: https://i.ytimg.com https://*.ytimg.com https://*.googleusercontent.com; media-src 'self' asset: http://asset.localhost blob: http://127.0.0.1:* https://*.googlevideo.com; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* https://*.googlevideo.com https://*.youtube.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'",
       "assetProtocol": {
         "enable": true,
         "scope": [

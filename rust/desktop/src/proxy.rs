@@ -318,29 +318,45 @@ fn serve_file(
     }
 }
 
+/// One client for the whole process. Building a client per chunk meant a fresh
+/// TLS handshake every megabyte, which cost more than the fetch itself.
+static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+
+fn client() -> &'static reqwest::Client {
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .user_agent(UA)
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_default()
+    })
+}
+
 /// Fetch `[start, end]` (inclusive) from upstream - always a bounded range,
-/// because that is the only shape googlevideo accepts.
-fn fetch_range(url: &str, start: usize, end: usize) -> Result<Vec<u8>, String> {
-    let client = reqwest::Client::builder()
-        .user_agent(UA)
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let (status, bytes) = tauri::async_runtime::block_on(async move {
-        let resp = client
+/// because that is the only shape googlevideo accepts. Returns the bytes and
+/// the upstream content type, which is per-stream: m4a is not webm.
+fn fetch_range(url: &str, start: usize, end: usize) -> Result<(Vec<u8>, String), String> {
+    let (status, ctype, bytes) = tauri::async_runtime::block_on(async move {
+        let resp = client()
             .get(url)
             .header("Range", format!("bytes={start}-{end}"))
             .send()
             .await
             .map_err(|e| e.to_string())?;
         let status = resp.status().as_u16();
+        let ctype = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("audio/webm")
+            .to_string();
         let body = resp.bytes().await.map_err(|e| e.to_string())?;
-        Ok::<_, String>((status, body.to_vec()))
+        Ok::<_, String>((status, ctype, body.to_vec()))
     })?;
     if status != 206 && status != 200 {
         return Err(format!("HTTP {status}"));
     }
-    Ok(bytes)
+    Ok((bytes, ctype))
 }
 
 fn serve(mut stream: TcpStream) {
@@ -472,13 +488,16 @@ fn serve(mut stream: TcpStream) {
     };
 
     match fetch_range(&url, start, end) {
-        Ok(bytes) => {
+        Ok((bytes, ctype)) => {
             let n = bytes.len();
             let total_str = hint_total
                 .map(|t| t.to_string())
                 .unwrap_or_else(|| "*".to_string());
+            // The type comes from upstream, so strip control characters before
+            // it is spliced into a header line.
+            let ctype: String = ctype.chars().filter(|c| !c.is_control()).collect();
             let extra = format!(
-                "Content-Type: audio/webm\r\nAccept-Ranges: bytes\r\nContent-Range: bytes {start}-{}/{total_str}\r\nContent-Length: {n}\r\nCache-Control: no-store\r\n",
+                "Content-Type: {ctype}\r\nAccept-Ranges: bytes\r\nContent-Range: bytes {start}-{}/{total_str}\r\nContent-Length: {n}\r\nCache-Control: no-store\r\n",
                 start + n.saturating_sub(1)
             );
             respond(
