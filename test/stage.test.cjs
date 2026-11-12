@@ -1,4 +1,4 @@
-/* Stage test: every local file index.html asks for must exist in both packaged
+/* Stage test: every local file the page asks for must exist in both packaged
  * outputs. The desktop and Android builds keep separate file lists, and each has
  * silently shipped a 404 before — styles/ on Android, embeddings.json on both —
  * so this walks the page's own references instead of trusting those lists.
@@ -10,7 +10,12 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const repo = path.resolve(__dirname, '..');
-const html = fs.readFileSync(path.join(repo, 'index.html'), 'utf8');
+/* The page's own resources are spelled in two authored files: the markup shell
+ * and app.js, where the stage script now lives so the CSP can drop
+ * 'unsafe-inline'. A fetch written in either one is still a bundle dependency. */
+const sources = ['index.html', 'app.js']
+  .map((f) => fs.readFileSync(path.join(repo, f), 'utf8'))
+  .join('\n');
 
 /* Local = no scheme, no protocol-relative host, no bare fragment. Anything with
  * a scheme (https:, data:, mailto:) is fetched from outside the bundle, and a
@@ -32,7 +37,7 @@ function localTargets(source) {
   return [...found].sort();
 }
 
-const targets = localTargets(html);
+const targets = localTargets(sources);
 
 /* Stage into a throwaway directory. Both scripts honour MEASURED_STAGE_OUT so a
  * test run never clobbers rust/desktop/dist or android/assets. */
@@ -59,11 +64,11 @@ function t(name, fn) {
 
 // The regex is the test's own blind spot: if index.html ever stops spelling the
 // boot fetch as a literal, this assertion is what notices the coverage gap.
-t('index.html references embeddings.json', () => {
+t('the page references embeddings.json', () => {
   assert.ok(targets.includes('embeddings.json'), 'boot fetch not found — parser or page changed');
 });
 
-t('index.html references at least the core assets', () => {
+t('the page references at least the core assets', () => {
   for (const must of ['api.js', 'styles/app.css', 'styles/base.css', 'lib/recommend.js']) {
     assert.ok(targets.includes(must), `missing ${must} from parsed targets`);
   }

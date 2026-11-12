@@ -136,6 +136,7 @@ console.log(
 // desktop. 'icon.png' is the page's <link rel="icon">.
 const WEB = [
   'index.html',
+  'app.js',
   'api.js',
   'deck',
   'lib',

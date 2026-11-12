@@ -15,6 +15,7 @@ const out = process.env.MEASURED_STAGE_OUT
 // every packaged desktop build.
 const files = [
   'index.html',
+  'app.js',
   'api.js',
   'fingerprints.js',
   'fingerprints.json',

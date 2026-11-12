@@ -20,6 +20,7 @@ node_modules/
 # intermediates
 assets/
 tmp/
+.tmp/
 classes/
 dex/
 gen/
