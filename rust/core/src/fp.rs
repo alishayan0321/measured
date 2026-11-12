@@ -327,6 +327,9 @@ pub fn analyze(pcm: &Pcm) -> Fingerprint {
 }
 
 pub fn fingerprint(path: &Path) -> anyhow::Result<Fingerprint> {
+    // duration_ms only decodes when the container declares no length (a bare mp3
+    // with no Xing header). That is the one case where this still reads the whole
+    // file, and it is what makes the middle and tail windows possible at all.
     let dur = duration_ms(path)
         .map(|ms| ms as f64 / 1000.0)
         .unwrap_or(0.0);
