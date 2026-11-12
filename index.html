@@ -194,6 +194,9 @@
 
       <div class="transport">
         <div class="btns">
+          <button class="mode" id="shuffle" aria-label="Shuffle off" aria-pressed="false">
+            <span class="rnd" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg></span>
+          </button>
           <button class="rnd" id="prev" aria-label="Previous">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h2v14H7zm3 7l10-7v14z"/></svg>
           </button>
@@ -202,6 +205,9 @@
           </button>
           <button class="rnd" id="next" aria-label="Next">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M15 5h2v14h-2zM4 5l10 7-10 7z"/></svg>
+          </button>
+          <button class="mode" id="repeat" aria-label="Repeat off" aria-pressed="false">
+            <span class="rnd" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 014-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 01-4 4H3"/><text class="rep-one" x="12" y="15.5" text-anchor="middle" font-size="8" font-weight="700" fill="currentColor" stroke="none">1</text></svg></span>
           </button>
         </div>
         <div class="time" id="time">0:00 / 0:00</div>
@@ -214,7 +220,7 @@
           </button>
           <div class="track" id="vol" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="70" aria-valuetext="70%"><div class="rail"></div><div class="fill" id="vfill"></div><div class="head" id="vhead"></div></div>
         </div>
-        <div class="hint" id="hint-keys" aria-label="Shortcuts: space play or pause, left and right seek, up and down volume, n and p next and previous, b A/B the loudness match, m mute, slash to filter"><kbd>space</kbd><kbd>←→</kbd><kbd>↑↓</kbd><kbd>n/p</kbd><kbd>b</kbd><kbd>m</kbd><kbd>/</kbd></div>
+        <div class="hint" id="hint-keys" aria-label="Shortcuts: space play or pause, left and right seek, up and down volume, n and p next and previous, s shuffle, r repeat, b A/B the loudness match, m mute, slash to filter"><kbd>space</kbd><kbd>←→</kbd><kbd>↑↓</kbd><kbd>n/p</kbd><kbd>s/r</kbd><kbd>b</kbd><kbd>m</kbd><kbd>/</kbd></div>
       </div>
 
       <div class="queue-strip" id="queue-strip" hidden aria-label="Up next preview">
@@ -522,7 +528,125 @@
 
   const cv = $('scope');
   const g = cv.getContext('2d');
-  const LS = { vol: 'measured.vol', track: 'measured.file', pos: 'measured.pos', mute: 'measured.mute' };
+  const LS = { vol: 'measured.vol', track: 'measured.file', pos: 'measured.pos', mute: 'measured.mute',
+               shuffle: 'measured.shuffle', repeat: 'measured.repeat' };
+
+  /* ── shuffle and repeat ─────────────────────────────────────────────────────
+     Shuffle is a queue, not a coin flip. The up-next strip promises what plays
+     next, so the order has to exist before the track ends; a pick made at the
+     moment of the switch could not be shown in advance. */
+  const REPEAT_WINDOW = 12;   // mirrors recommend-wire.js: distinct tracks kept out of the next pick
+  let shuffleOn = PlayerAPI.get(LS.shuffle, '0') === '1';
+  let repeatMode = PlayerAPI.get(LS.repeat, 'off');
+  if (repeatMode !== 'all' && repeatMode !== 'one') repeatMode = 'off';
+  let shufQueue = [];
+  let shufHist = [];
+  let shufDone = false;   // the current pass through the pool has been played out
+
+  /* The ranker's repeat window is a hard filter, not a penalty, so shuffle has to
+     honour it too — otherwise turning shuffle on would be a way to hear the same
+     artist twice in a row. */
+  function recentFiles() {
+    const out = new Set();
+    try {
+      const ev = RANK ? RANK.events() : [];
+      for (let i = ev.length - 1; i >= 0 && out.size < REPEAT_WINDOW; i--) {
+        const f = ev[i] && ev[i].file;
+        if (f) out.add(f);
+      }
+    } catch (e) { /* no ranker yet: nothing counts as recent */ }
+    return out;
+  }
+
+  function shuffleFill() {
+    const recent = recentFiles();
+    const pool = [];
+    for (let i = 0; i < VIEW.length; i++) {
+      if (i === cur) continue;
+      const f = VIEW[i] && VIEW[i].file;
+      if (f && recent.has(f)) continue;
+      pool.push(i);
+    }
+    /* Every remaining track is inside the window (a tiny library, or one artist).
+       Repeating is better than silence, so fall back to the whole view. */
+    if (!pool.length) {
+      for (let i = 0; i < VIEW.length; i++) if (i !== cur) pool.push(i);
+    }
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const t = pool[i]; pool[i] = pool[j]; pool[j] = t;
+    }
+    shufQueue = pool;
+    shufDone = false;
+  }
+
+  function shuffleNext() {
+    if (!shufQueue.length) {
+      /* One pass through the shuffled pool is the queue. Repeat off means the
+         pass ends there; repeat all starts a fresh one. */
+      if (shufDone && repeatMode === 'off') return -1;
+      shuffleFill();
+    }
+    if (!shufQueue.length) return -1;
+    const i = shufQueue.shift();
+    if (!shufQueue.length) shufDone = true;
+    if (cur >= 0) { shufHist.push(cur); if (shufHist.length > 50) shufHist.shift(); }
+    return i;
+  }
+
+  /* The head of the queue without consuming it: the strip has to show what will
+     play, and showing it must not change what plays. */
+  function shufflePeek(n) {
+    if (!shufQueue.length) {
+      if (shufDone && repeatMode === 'off') return [];
+      shuffleFill();
+    }
+    return shufQueue.slice(0, n);
+  }
+
+  function paintModes() {
+    const s = $('shuffle'), r = $('repeat');
+    if (s) {
+      s.setAttribute('aria-pressed', shuffleOn ? 'true' : 'false');
+      s.setAttribute('aria-label', shuffleOn ? 'Shuffle on' : 'Shuffle off');
+    }
+    if (r) {
+      r.setAttribute('aria-pressed', repeatMode === 'off' ? 'false' : 'true');
+      r.setAttribute('aria-label', repeatMode === 'one' ? 'Repeat one'
+        : repeatMode === 'all' ? 'Repeat all' : 'Repeat off');
+      r.setAttribute('data-mode', repeatMode);
+    }
+  }
+
+  function setShuffle(on) {
+    shuffleOn = !!on;
+    shufQueue = []; shufHist = [];
+    PlayerAPI.set(LS.shuffle, shuffleOn ? '1' : '0');
+    paintModes();
+    announce(shuffleOn ? 'Shuffle on' : 'Shuffle off');
+    try { renderQueueStrip(); } catch (e) {}
+  }
+
+  function cycleRepeat() {
+    repeatMode = repeatMode === 'off' ? 'all' : repeatMode === 'all' ? 'one' : 'off';
+    PlayerAPI.set(LS.repeat, repeatMode);
+    paintModes();
+    announce(repeatMode === 'one' ? 'Repeat one' : repeatMode === 'all' ? 'Repeat all' : 'Repeat off');
+  }
+
+  /* Repeat off at the end of the queue: stop where the music stopped. The listen
+     still has to be booked, or the last track of every session would be invisible
+     to the ranker. */
+  function stopAtEnd() {
+    if (RANK && cur >= 0 && VIEW[cur] && curFile) {
+      try {
+        RANK.end(audio.currentTime || 0, audio.duration || VIEW[cur].dur || 0, undefined, { naturalEnd: true });
+      } catch (e) { /* a lost listen is better than a stuck player */ }
+    }
+    naturalEnded = false;
+    icon(false);
+    announce('End of the queue.');
+  }
   let curFile = '';
   let lastNativeFile = '';
   let seekHold = 0;
@@ -1193,9 +1317,24 @@
   function step(d) {
     if (!VIEW.length) return;
     if (d < 0 && (audio.currentTime || 0) > 3) { seekTo(0); return; }
+    if (shuffleOn) {
+      if (d > 0) {
+        const i = shuffleNext();
+        if (i >= 0) { select(i, playing); return; }
+        if (repeatMode === 'off') return;   // the pass is over and nothing repeats
+      } else {
+        /* Back through the shuffle history, not back one row: with shuffle on the
+           row above is not where the listener came from. */
+        const back = shufHist.pop();
+        if (back !== undefined && VIEW[back]) { select(back, playing); return; }
+      }
+    }
     let i = cur + d;
-    if (i < 0) i = VIEW.length - 1;
-    if (i >= VIEW.length) i = 0;
+    if (i < 0) i = repeatMode === 'all' ? VIEW.length - 1 : 0;
+    if (i >= VIEW.length) i = repeatMode === 'all' ? 0 : VIEW.length - 1;
+    /* Repeat off at the end of the queue: there is no next track, and restarting
+       the last one would be a repeat the mode says not to do. */
+    if (i === cur && repeatMode === 'off') return;
     select(i, playing);
   }
 
@@ -1360,6 +1499,14 @@
     if (Date.now() - seekHold < 500) return;
     if (ONLINE) { closeOnline(true); onlineNext(0); return; }
     naturalEnded = true;
+    /* Repeat one is the whole point of the mode: the same track again, without
+       asking the ranker, which would otherwise move on. */
+    if (repeatMode === 'one') { select(cur, true); return; }
+    if (shuffleOn) {
+      const i = shuffleNext();
+      if (i >= 0) { select(i, true); return; }
+      if (repeatMode === 'off') { stopAtEnd(); return; }
+    }
     let pick = null;
     try { pick = RANK ? RANK.nextIndex(rankLib()) : null; } catch (e) { pick = null; }
     if (Number.isInteger(pick) && VIEW[pick] && pick !== cur) { select(pick, true); return; }
@@ -1374,7 +1521,12 @@
       const r = RANK ? RANK.rank(rankLib(), 1) : null;
       cold = !r || !r.length || !!r[0].cold;
     } catch (e) { cold = true; }
-    if (cold && VIEW.length) { select((cur + 1) % VIEW.length, true); return; }
+    if (cold && VIEW.length) {
+      if (cur + 1 < VIEW.length) { select(cur + 1, true); return; }
+      if (repeatMode === 'all') { select(0, true); return; }
+      stopAtEnd();
+      return;
+    }
     onlineNext(0);
   });
 
@@ -1461,6 +1613,9 @@
   $('prev').onclick = () => step(-1);
   $('next').onclick = () => step(1);
   $('mute').onclick = toggleMute;
+  $('shuffle').onclick = () => setShuffle(!shuffleOn);
+  $('repeat').onclick = cycleRepeat;
+  paintModes();
   /* Field-scoped filter. "artist:radiohead plays:0" narrows by field; a bare
      word still matches title+artist, so the old behaviour is unchanged. */
   function smartMatch(t, q, per) {
@@ -1506,6 +1661,8 @@
     else if (e.key === 'ArrowDown') { e.preventDefault(); setVol(clamp(audio.volume - 0.05, 0, 1)); }
     else if (e.key === 'n' || e.key === 'N') step(1);
     else if (e.key === 'p' || e.key === 'P') step(-1);
+    else if (e.key === 's' || e.key === 'S') setShuffle(!shuffleOn);
+    else if (e.key === 'r' || e.key === 'R') cycleRepeat();
     else if (e.key === 'b' || e.key === 'B') {
       /* A/B the loudness match: bypassing is a gain of 1, so it is one ramp, no
          re-analysis. eqCtx only exists once the EQ graph was built on play. */
@@ -2766,22 +2923,36 @@ function renderQueueStrip() {
   const box = document.getElementById('queue-items');
   if (!strip || !box) return;
   let rows = [];
-  try {
-    if (typeof RANK !== 'undefined' && RANK && typeof RANK.rank === 'function' && typeof rankLib === 'function') {
-      rows = RANK.rank(rankLib(), 3) || [];
-    }
-  } catch (e) { rows = []; }
-  /* A cold library gives the ranker no opinion to express, so rank() lists from
-     the top of the view — which is not where "next" goes. Show the three rows
-     that n and the end of a track will actually reach instead. The strip is a
-     promise, not decoration. */
-  if (rows.length && rows.every(function (r) { return r.cold; }) && VIEW.length > 1) {
-    rows = [];
-    const base = cur < 0 ? -1 : cur;
-    for (let k = 1; k <= 3 && k < VIEW.length; k++) {
-      const i = (base + k) % VIEW.length;
+  if (shuffleOn) {
+    /* Shuffle already decided the order, so the strip shows that order rather
+       than the ranker's — otherwise it would promise tracks that will not play. */
+    rows = shufflePeek(3).map(function (i) {
       const t = VIEW[i] || {};
-      rows.push({ index: i, file: t.file, title: t.title, artist: t.artist, score: 0, cold: true });
+      return { index: i, file: t.file, title: t.title, artist: t.artist, score: 0, cold: true };
+    });
+  } else {
+    try {
+      if (typeof RANK !== 'undefined' && RANK && typeof RANK.rank === 'function' && typeof rankLib === 'function') {
+        rows = RANK.rank(rankLib(), 3) || [];
+      }
+    } catch (e) { rows = []; }
+    /* A cold library gives the ranker no opinion to express, so rank() lists from
+       the top of the view — which is not where "next" goes. Show the three rows
+       that n and the end of a track will actually reach instead. The strip is a
+       promise, not decoration. */
+    if (rows.length && rows.every(function (r) { return r.cold; }) && VIEW.length > 1) {
+      rows = [];
+      const base = cur < 0 ? -1 : cur;
+      for (let k = 1; k <= 3; k++) {
+        let i = base + k;
+        if (i >= VIEW.length) {
+          if (repeatMode !== 'all') break;   // repeat off stops at the end
+          i = i % VIEW.length;
+        }
+        if (i === cur) break;
+        const t = VIEW[i] || {};
+        rows.push({ index: i, file: t.file, title: t.title, artist: t.artist, score: 0, cold: true });
+      }
     }
   }
   box.textContent = '';
