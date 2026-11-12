@@ -1,0 +1,33 @@
+{
+  "_comment": "Shared filename-parser contract. Consumed by test/parse.test.cjs (JS) and rust/core/src/scan.rs (cargo test). Both must agree on every case.",
+  "cases": [
+    { "file": "Daft Punk - One More Time.mp3", "artist": "Daft Punk", "title": "One More Time", "videoId": null },
+    { "file": "Daft Punk \u2013 One More Time.mp3", "artist": "Daft Punk", "title": "One More Time", "videoId": null },
+    { "file": "Daft Punk \u2014 One More Time.webm", "artist": "Daft Punk", "title": "One More Time", "videoId": null },
+    { "file": "Clean Bandit - Symphony.mp3", "artist": "Clean Bandit", "title": "Symphony", "videoId": null },
+    { "file": "Clean Bandit - Symphony (Official Video).webm", "artist": "Clean Bandit", "title": "Symphony", "videoId": null },
+    { "file": "Radiohead - Creep [Official Audio].mp3", "artist": "Radiohead", "title": "Creep", "videoId": null },
+    { "file": "Radiohead - Creep [Explicit].mp3", "artist": "Radiohead", "title": "Creep", "videoId": null },
+    { "file": "Radiohead - Creep (Live).mp3", "artist": "Radiohead", "title": "Creep (Live)", "videoId": null },
+    { "file": "Radiohead - Creep (1).mp3", "artist": "Radiohead", "title": "Creep", "videoId": null },
+    { "file": "Radiohead - Creep Official Video.mp3", "artist": "Radiohead", "title": "Creep", "videoId": null },
+    { "file": "Radiohead - Creep 4K.mp3", "artist": "Radiohead", "title": "Creep", "videoId": null },
+    { "file": "Song (Official Video).mp3", "artist": "Unknown", "title": "Song", "videoId": null },
+    { "file": "One More Time | Daft Punk [dQw4w9WgXcQ].webm", "artist": "Daft Punk", "title": "One More Time", "videoId": "dQw4w9WgXcQ" },
+    { "file": "Song | Artist.mp3", "artist": "Artist", "title": "Song", "videoId": null },
+    { "file": "One More Time | Daft Punk | Extra [dQw4w9WgXcQ](2).webm", "artist": "Daft Punk", "title": "One More Time", "videoId": "dQw4w9WgXcQ" },
+    { "file": "Daft Punk - One More Time [dQw4w9WgXcQ](2).webm", "artist": "Daft Punk", "title": "One More Time", "videoId": "dQw4w9WgXcQ" },
+    { "file": "Daft Punk - One More Time (2) [dQw4w9WgXcQ].webm", "artist": "Daft Punk", "title": "One More Time", "videoId": "dQw4w9WgXcQ" },
+    { "file": "Video Games.mp3", "artist": "Unknown", "title": "Video Games", "videoId": null },
+    { "file": "New Order - Blue Monday.mp3", "artist": "New Order", "title": "Blue Monday", "videoId": null },
+    { "file": "no dash title.webm", "artist": "Unknown", "title": "no dash title", "videoId": null },
+    { "file": "A - B - C.mp3", "artist": "A", "title": "B - C", "videoId": null },
+    { "file": "Song ft. Other.mp3", "artist": "Other", "title": "Song ft. Other", "videoId": null },
+    { "file": "a.b.c.mp3", "artist": "Unknown", "title": "a.b.c", "videoId": null },
+    { "file": " - Title.mp3", "artist": "Unknown", "title": "Title", "videoId": null },
+    { "file": "\u00dcn\u00efcode \u2013 T\u00eftle.mp3", "artist": "\u00dcn\u00efcode", "title": "T\u00eftle", "videoId": null },
+    { "file": "Tycho - Awake.m4a", "artist": "Tycho", "title": "Awake", "videoId": null },
+    { "file": "Tycho - Awake [dQw4w9WgXcQ].mp3", "artist": "Tycho", "title": "Awake", "videoId": "dQw4w9WgXcQ" },
+    { "file": "Artist - Song (Lyrics).mp3", "artist": "Artist", "title": "Song", "videoId": null }
+  ]
+}
