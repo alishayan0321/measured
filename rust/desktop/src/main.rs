@@ -626,3 +626,45 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("failed to start MEASURED");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::safe_name;
+    use std::path::Path;
+
+    // `prepare` and `remove_added` join this onto a library directory. Every
+    // rejected case here would otherwise escape that directory.
+    #[test]
+    fn safe_name_accepts_plain_file_names() {
+        assert_eq!(safe_name("song.mp3").as_deref(), Some("song.mp3"));
+        assert_eq!(
+            safe_name("Artist - Title.webm").as_deref(),
+            Some("Artist - Title.webm")
+        );
+    }
+
+    #[test]
+    fn safe_name_rejects_traversal_and_paths() {
+        for bad in [
+            "..",
+            ".",
+            "../evil.mp3",
+            "..\\evil.mp3",
+            "a/b.mp3",
+            "a\\b.mp3",
+            "/etc/passwd",
+            "C:\\Windows\\system32\\evil.mp3",
+            "./song.mp3",
+            "",
+        ] {
+            assert_eq!(safe_name(bad), None, "must reject {bad:?}");
+        }
+    }
+
+    #[test]
+    fn safe_name_result_never_leaves_the_directory() {
+        let dir = Path::new(r"C:\music\added");
+        let name = safe_name("track 01.mp3").expect("plain name");
+        assert_eq!(dir.join(&name).parent(), Some(dir));
+    }
+}
