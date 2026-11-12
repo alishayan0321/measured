@@ -103,3 +103,9 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: check
         run: cargo check -p measured-desktop
+      - name: test
+        # safe_name is the guard that stops a user-supplied filename from
+        # escaping the library directory, and its tests only build on Windows.
+        # `cargo check` never links them, so before this step they had never
+        # run in CI at all — the guard was covered on paper only.
+        run: cargo test -p measured-desktop
