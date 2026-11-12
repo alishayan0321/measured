@@ -73,7 +73,8 @@ fn tidy(s: &str) -> String {
 /// Tokens the uploader bolts onto a name. Matched as WHOLE WORDS only â€” a
 /// substring test would eat "Clean Bandit", and sweeping tokens out of the
 /// middle of a title would turn "Video Games" into "Games". Nothing here is
-/// ever removed from the middle of a name.
+/// ever removed from the middle of a name. Version tags (remastered, explicit,
+/// clean) are absent on purpose: they tell two masters of the same song apart.
 const PROMO: &[&str] = &[
     "official",
     "video",
@@ -91,11 +92,7 @@ const PROMO: &[&str] = &[
     "m/v",
     "visualizer",
     "visualiser",
-    "remaster",
-    "remastered",
     "premiere",
-    "explicit",
-    "clean",
     "teaser",
     "trailer",
     "promo",
@@ -122,6 +119,14 @@ fn bare(word: &str) -> String {
         .to_string()
 }
 
+/// A bare year is a date stamp, not a name: "Official Video 2020" is promo,
+/// but "Live 2020" is not, because "live" is not a promo token.
+fn is_year(t: &str) -> bool {
+    t.len() == 4
+        && (t.starts_with("19") || t.starts_with("20"))
+        && t.bytes().all(|b| b.is_ascii_digit())
+}
+
 /// True only when the field says nothing but promo noise. A field that merely
 /// STARTS with a promo word ("Clean Bandit", "New Order") is a real name, and
 /// so is a field made only of filler ("A").
@@ -141,6 +146,9 @@ fn looks_promo(s: &str) -> bool {
             continue;
         }
         if FILLER.contains(&t.as_str()) {
+            continue;
+        }
+        if is_year(&t) {
             continue;
         }
         return false;

@@ -7,7 +7,7 @@
     { "file": "Clean Bandit - Symphony.mp3", "artist": "Clean Bandit", "title": "Symphony", "videoId": null },
     { "file": "Clean Bandit - Symphony (Official Video).webm", "artist": "Clean Bandit", "title": "Symphony", "videoId": null },
     { "file": "Radiohead - Creep [Official Audio].mp3", "artist": "Radiohead", "title": "Creep", "videoId": null },
-    { "file": "Radiohead - Creep [Explicit].mp3", "artist": "Radiohead", "title": "Creep", "videoId": null },
+    { "file": "Radiohead - Creep [Explicit].mp3", "artist": "Radiohead", "title": "Creep [Explicit]", "videoId": null },
     { "file": "Radiohead - Creep (Live).mp3", "artist": "Radiohead", "title": "Creep (Live)", "videoId": null },
     { "file": "Radiohead - Creep (1).mp3", "artist": "Radiohead", "title": "Creep", "videoId": null },
     { "file": "Radiohead - Creep Official Video.mp3", "artist": "Radiohead", "title": "Creep", "videoId": null },
@@ -28,6 +28,8 @@
     { "file": "\u00dcn\u00efcode \u2013 T\u00eftle.mp3", "artist": "\u00dcn\u00efcode", "title": "T\u00eftle", "videoId": null },
     { "file": "Tycho - Awake.m4a", "artist": "Tycho", "title": "Awake", "videoId": null },
     { "file": "Tycho - Awake [dQw4w9WgXcQ].mp3", "artist": "Tycho", "title": "Awake", "videoId": "dQw4w9WgXcQ" },
-    { "file": "Artist - Song (Lyrics).mp3", "artist": "Artist", "title": "Song", "videoId": null }
+    { "file": "Artist - Song (Lyrics).mp3", "artist": "Artist", "title": "Song", "videoId": null },
+    { "file": "Title | Official Video 2020.mp3", "artist": "Unknown", "title": "Title", "videoId": null },
+    { "file": "Title (Official Audio 2019).mp3", "artist": "Unknown", "title": "Title", "videoId": null }
   ]
 }
