@@ -1,4 +1,4 @@
-﻿
+
 /* STEP 1 Ã¢â‚¬â€ fingerprint gone; the stats row carries the numbers */
 .scope, .scope-ghost{display:none !important}
 .hero{display:block}
@@ -124,6 +124,22 @@
 .rnd:hover::after{ opacity:1 }
 .rnd:active, .play:active{ transform:translateY(0) scale(.95) }
 .play:hover{ transform:translateY(-1.5px) scale(1.02) }
+
+/* Shuffle and repeat: the same round button, one size down, with a real 44px
+   target. The hit area is the button box rather than a ::after layer because
+   .rnd already spends ::after on the specular cap and clips overflow, so a
+   pseudo-element there would be invisible and unclickable. */
+.mode{
+  width:44px; height:44px; padding:0; border:0; background:none;
+  display:grid; place-items:center; color:var(--ink);
+  -webkit-tap-highlight-color:transparent;
+}
+.mode .rnd{ width:34px; height:34px; opacity:.62; transition:opacity .18s ease, color .18s ease }
+.mode:hover .rnd{ opacity:1 }
+.mode[aria-pressed="true"] .rnd{ opacity:1; color:var(--accent) }
+.mode:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:999px }
+.mode .rep-one{ display:none }
+.mode[data-mode="one"] .rep-one{ display:block }
 
 /* groove rails inside the dock */
 .seek-wrap{min-width:190px}
