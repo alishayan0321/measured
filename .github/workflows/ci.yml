@@ -29,6 +29,11 @@ jobs:
         run: node test/repeat.test.cjs
       - name: embed
         run: node test/embed.test.cjs
+      - name: parse
+        # test/parse-vectors.json is the contract shared with rust/core/src/scan.rs.
+        # The rust job runs the same file from cargo test, so a divergence between
+        # the two parsers fails whichever side drifted.
+        run: node test/parse.test.cjs
       - name: stage
         # Both packaged builds have shipped a 404 (styles/ on Android,
         # embeddings.json on both), so the bundles are checked against the

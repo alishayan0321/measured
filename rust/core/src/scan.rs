@@ -40,123 +40,361 @@ pub fn ext_of(name: &str) -> Option<String> {
 }
 
 fn tidy(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut last_space = false;
+    let mut normalized = String::with_capacity(s.len());
     for ch in s.chars() {
-        let is_ws = ch.is_whitespace();
-        if is_ws {
-            if !last_space && !out.is_empty() {
-                out.push(' ');
+        match ch {
+            '\u{2018}' | '\u{2019}' => normalized.push('\''),
+            '\u{201c}' | '\u{201d}' => normalized.push('"'),
+            '\u{3001}' | '\u{ff5c}' => {
+                normalized.push(' ');
+                normalized.push('|');
+                normalized.push(' ');
             }
-        } else {
-            out.push(ch);
+            _ => normalized.push(ch),
         }
-        last_space = is_ws;
     }
-    out.trim()
-        .trim_matches(|c: char| c == '-' || c == '_' || c == '|')
-        .trim()
+    normalized
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim_matches(|c: char| {
+            c.is_whitespace()
+                || c == '-'
+                || c == '\u{2013}'
+                || c == '\u{2014}'
+                || c == '|'
+                || c == ','
+                || c == ';'
+                || c == ':'
+        })
         .to_string()
 }
 
-/// Words the downloader put in front of titles. Kept as a slice so the list can
-/// be extended without recompiling call sites.
+/// Tokens the uploader bolts onto a name. Matched as WHOLE WORDS only â€” a
+/// substring test would eat "Clean Bandit", and sweeping tokens out of the
+/// middle of a title would turn "Video Games" into "Games". Nothing here is
+/// ever removed from the middle of a name.
 const PROMO: &[&str] = &[
-    "official video",
-    "official audio",
-    "official music video",
-    "lyric video",
+    "official",
+    "video",
+    "audio",
+    "lyric",
     "lyrics",
+    "lyrical",
+    "music",
     "hd",
     "hq",
     "4k",
     "8k",
-    "audio",
-    "video",
-    "music video",
-    "visualizer",
-    "m/v",
+    "uhd",
     "mv",
-    "prod.",
-    "prod by",
-    "out now",
+    "m/v",
+    "visualizer",
+    "visualiser",
+    "remaster",
+    "remastered",
     "premiere",
     "explicit",
     "clean",
-    "remastered",
+    "teaser",
+    "trailer",
+    "promo",
+    "song",
+    "full",
+    "original",
+    "new",
+    "latest",
+    "subscribe",
+    "out",
+    "now",
+    "prod",
+    "prod.",
 ];
 
+/// Words that carry no meaning on their own but do not make a field "promo".
+const FILLER: &[&str] = &[
+    "a", "an", "the", "by", "of", "in", "on", "with", "and", "ft", "ft.", "feat", "feat.",
+];
+
+fn bare(word: &str) -> String {
+    word.to_lowercase()
+        .trim_matches(|c: char| !(c.is_ascii_alphanumeric() || c == '/'))
+        .to_string()
+}
+
+/// True only when the field says nothing but promo noise. A field that merely
+/// STARTS with a promo word ("Clean Bandit", "New Order") is a real name, and
+/// so is a field made only of filler ("A").
 fn looks_promo(s: &str) -> bool {
-    let low = s.to_ascii_lowercase();
-    PROMO.iter().any(|p| low.contains(p))
+    let w: Vec<&str> = s.split_whitespace().collect();
+    if w.is_empty() {
+        return true;
+    }
+    if w.len() > 9 {
+        return true; // long tail is a description, not a name
+    }
+    let mut promo = false;
+    for word in w {
+        let t = bare(word);
+        if PROMO.contains(&t.as_str()) {
+            promo = true;
+            continue;
+        }
+        if FILLER.contains(&t.as_str()) {
+            continue;
+        }
+        return false;
+    }
+    promo
+}
+
+fn trim_promo_tail(s: &str) -> String {
+    let mut w: Vec<&str> = s.split_whitespace().collect();
+    while w.len() > 1 {
+        let t = bare(w[w.len() - 1]);
+        if !PROMO.contains(&t.as_str()) {
+            break;
+        }
+        w.pop();
+    }
+    w.join(" ")
+}
+
+/// (Official Video), [Lyrics], ï¼ˆHDï¼‰ â€” removed only when the whole bracket is promo.
+fn drop_promo_brackets(base: &str) -> String {
+    let chars: Vec<char> = base.chars().collect();
+    let mut out = String::with_capacity(base.len());
+    let mut i = 0;
+    while i < chars.len() {
+        let open = chars[i];
+        if open != '(' && open != '\u{ff08}' && open != '[' {
+            out.push(open);
+            i += 1;
+            continue;
+        }
+        let mut j = i + 1;
+        while j < chars.len() && chars[j] != ')' && chars[j] != '\u{ff09}' && chars[j] != ']' {
+            j += 1;
+        }
+        if j >= chars.len() {
+            out.push(open);
+            i += 1;
+            continue;
+        }
+        let inner: String = chars[i + 1..j].iter().collect();
+        if looks_promo(&inner) {
+            out.push(' ');
+        } else {
+            out.extend(chars[i..=j].iter());
+        }
+        i = j + 1;
+    }
+    out
+}
+
+fn strip_copy_marker(s: &str) -> Option<String> {
+    let t = s.trim_end();
+    if !t.ends_with(')') {
+        return None;
+    }
+    let open = t.rfind('(')?;
+    let inner: Vec<char> = t[open + 1..t.len() - 1].chars().collect();
+    if inner.is_empty() || !inner.iter().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    Some(t[..open].trim_end().to_string())
+}
+
+fn strip_video_id(s: &str) -> Option<(String, String)> {
+    let t = s.trim_end();
+    if !t.ends_with(']') {
+        return None;
+    }
+    let open = t.rfind('[')?;
+    let inner: Vec<char> = t[open + 1..t.len() - 1].chars().collect();
+    if inner.len() != 11 {
+        return None;
+    }
+    if !inner
+        .iter()
+        .all(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+    {
+        return None;
+    }
+    Some((
+        t[..open].trim_end().to_string(),
+        inner.into_iter().collect(),
+    ))
+}
+
+fn split_dash(base: &str) -> Vec<String> {
+    let chars: Vec<char> = base.chars().collect();
+    let mut parts = Vec::new();
+    let mut cur = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i].is_whitespace() {
+            let mut j = i;
+            while j < chars.len() && chars[j].is_whitespace() {
+                j += 1;
+            }
+            if j + 1 < chars.len()
+                && matches!(chars[j], '-' | '\u{2013}' | '\u{2014}')
+                && chars[j + 1].is_whitespace()
+            {
+                parts.push(cur.clone());
+                cur.clear();
+                let mut k = j + 1;
+                while k < chars.len() && chars[k].is_whitespace() {
+                    k += 1;
+                }
+                i = k;
+                continue;
+            }
+        }
+        cur.push(chars[i]);
+        i += 1;
+    }
+    parts.push(cur);
+    parts
+}
+
+fn split_ft(base: &str) -> Option<(String, String)> {
+    let chars: Vec<char> = base.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i].is_whitespace() {
+            let mut j = i;
+            while j < chars.len() && chars[j].is_whitespace() {
+                j += 1;
+            }
+            let mut k = j;
+            while k < chars.len() && !chars[k].is_whitespace() {
+                k += 1;
+            }
+            let tok: String = chars[j..k].iter().collect();
+            let low = tok.to_lowercase();
+            if low == "ft" || low == "ft." || low == "feat" || low == "feat." {
+                let mut r = k;
+                while r < chars.len() && chars[r].is_whitespace() {
+                    r += 1;
+                }
+                if r < chars.len() {
+                    return Some((chars[..i].iter().collect(), chars[r..].iter().collect()));
+                }
+            }
+            i = k;
+            continue;
+        }
+        i += 1;
+    }
+    None
 }
 
 /// Parse "Artist - Title [videoId](1).webm" into its parts.
+///
+/// This is one half of a two-language contract: `lib/parse-name.js` implements
+/// the same spec, and `test/parse-vectors.json` is the fixture both sides run.
+/// Changing one without the others leaves the desktop, web and Android builds
+/// naming the same file differently.
 pub fn parse_name(file: &str) -> (Option<String>, String, Option<String>) {
-    let stem = match file.rfind('.') {
-        Some(i) => &file[..i],
-        None => file,
-    };
-
-    let mut rest = stem.to_string();
-
-    // trailing [XXXXXXXXXXX] youtube id
-    let mut video_id = None;
-    if let Some(close) = rest.rfind(']') {
-        if close + 1 == rest.len() {
-            if let Some(open) = rest.rfind('[') {
-                let inner = &rest[open + 1..close];
-                if inner.len() == 11
-                    && inner
-                        .chars()
-                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-                {
-                    video_id = Some(inner.to_string());
-                    rest = rest[..open].trim_end().to_string();
-                }
-            }
+    let leaf = file.rsplit(['/', '\\']).next().unwrap_or(file);
+    let mut base = leaf.to_string();
+    if let Some(dot) = base.rfind('.') {
+        if dot > 0 {
+            base.truncate(dot);
         }
     }
 
-    // trailing (1)/(2) copy markers
-    while rest.ends_with(')') {
-        if let Some(open) = rest.rfind('(') {
-            let inner = &rest[open + 1..rest.len() - 1];
-            if !inner.is_empty() && inner.chars().all(|c| c.is_ascii_digit()) {
-                rest = rest[..open].trim_end().to_string();
+    // Copy markers and the id can come in either order â€” "Song [id] (2)" and
+    // "Song (2) [id]" are both common â€” so peel them in a loop.
+    let mut video_id: Option<String> = None;
+    for _ in 0..3 {
+        if let Some(next) = strip_copy_marker(&base) {
+            base = next;
+            continue;
+        }
+        if video_id.is_none() {
+            if let Some((rest, id)) = strip_video_id(&base) {
+                base = rest;
+                video_id = Some(id);
                 continue;
             }
         }
         break;
     }
+    base = drop_promo_brackets(&base);
 
-    // split artist - title on the last " - " that leaves both sides non-empty
-    let mut artist = None;
-    let mut title = rest.clone();
-    if let Some(idx) = rest.rfind(" - ") {
-        let (a, t) = (&rest[..idx], &rest[idx + 3..]);
-        if !a.trim().is_empty() && !t.trim().is_empty() {
-            artist = Some(tidy(a));
-            title = t.trim().to_string();
+    let mut artist = String::from("Unknown");
+    let title: String;
+
+    let fields: Vec<String> = base
+        .split(['|', '\u{ff5c}'])
+        .map(tidy)
+        .filter(|f| !f.is_empty())
+        .collect();
+
+    if fields.len() >= 2 {
+        // scraped shape: title | artist | extra
+        title = fields[0].clone();
+        for f in &fields[1..] {
+            if !looks_promo(f) {
+                artist = f.clone();
+                break;
+            }
+        }
+    } else {
+        let parts = split_dash(&base);
+        if parts.len() >= 2 {
+            let head = tidy(&parts[0]);
+            if head.is_empty() || looks_promo(&head) {
+                artist = String::from("Unknown");
+                title = tidy(&base);
+            } else {
+                artist = head;
+                title = tidy(&parts[1..].join(" - "));
+            }
+        } else {
+            title = tidy(&base);
+            if let Some((before, after)) = split_ft(&base) {
+                let head = tidy(&before);
+                if !head.is_empty() && head.split_whitespace().count() <= 4 {
+                    artist = tidy(&after);
+                }
+            }
         }
     }
 
-    // drop promo junk from the title tail
-    let mut cleaned: Vec<String> = Vec::new();
-    for part in title.split(['|', '·', '/']) {
-        let p = part.trim();
-        if p.is_empty() || looks_promo(p) {
-            continue;
+    let fallback = {
+        let t = tidy(&base);
+        if t.is_empty() {
+            base.clone()
+        } else {
+            t
         }
-        cleaned.push(p.to_string());
-    }
-    if !cleaned.is_empty() {
-        title = cleaned.join(" ");
-    }
-
-    let title = tidy(&title);
-    let title = if title.is_empty() { tidy(stem) } else { title };
-    (artist, title, video_id)
+    };
+    let title = {
+        let t = trim_promo_tail(&tidy(&title));
+        if t.is_empty() {
+            fallback.clone()
+        } else {
+            t
+        }
+    };
+    let artist = {
+        let t = tidy(&artist);
+        if t.is_empty() {
+            String::from("Unknown")
+        } else {
+            t
+        }
+    };
+    let title = if title.to_lowercase() == artist.to_lowercase() {
+        fallback
+    } else {
+        title
+    };
+    (Some(artist), title, video_id)
 }
 
 /// Stable key used for cover art filenames: the video id when we have one,
@@ -204,7 +442,7 @@ struct DurationEntry {
 ///
 /// `decode::duration_ms` only reads a header when the container declares a frame
 /// count. Every webm we download from YouTube declares none, so it falls back to
-/// decoding the whole file — and `scan_dir` called it for every file on every
+/// decoding the whole file â€” and `scan_dir` called it for every file on every
 /// boot, which is why a large library took minutes to appear. Entries are
 /// validated against mtime and size, so an unchanged file is never re-decoded
 /// and a replaced one is.
@@ -223,7 +461,7 @@ pub struct DurationCache {
 }
 
 impl DurationCache {
-    /// A missing or corrupt cache is not an error — it only costs a re-measure.
+    /// A missing or corrupt cache is not an error â€” it only costs a re-measure.
     pub fn load(path: &Path) -> Self {
         fs::read(path)
             .ok()
@@ -461,5 +699,25 @@ mod tests {
         assert_eq!(loaded.get("/music/a.webm", 7, 100), None);
 
         fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The shared contract: every vector must parse the same way here as in
+    /// lib/parse-name.js, which runs the same file from node.
+    #[test]
+    fn parser_matches_shared_vectors() {
+        let raw = include_str!("../../../test/parse-vectors.json");
+        let doc: serde_json::Value = serde_json::from_str(raw).expect("fixture json");
+        let cases = doc["cases"].as_array().expect("cases array");
+        assert!(cases.len() >= 25, "expected at least 25 vectors");
+        for c in cases {
+            let file = c["file"].as_str().expect("file");
+            let want_artist = c["artist"].as_str().expect("artist");
+            let want_title = c["title"].as_str().expect("title");
+            let want_id = c["videoId"].as_str();
+            let (artist, title, id) = parse_name(file);
+            assert_eq!(artist.as_deref(), Some(want_artist), "artist for {file}");
+            assert_eq!(title, want_title, "title for {file}");
+            assert_eq!(id.as_deref(), want_id, "videoId for {file}");
+        }
     }
 }
