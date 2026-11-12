@@ -2,11 +2,13 @@
 //! crest factor, rolloff, 26 log bands). Same shape as `fingerprints.json` so
 //! the existing UI keeps working.
 //!
-//! Loudness is ITU-R BS.1770-4: K-weighting plus the two-stage gate. The filter
-//! is designed from the analog prototype rather than copied from the 48 kHz
-//! coefficient table, because a hard-coded table silently mis-weights every
-//! 44.1 kHz file. True peak is 4x oversampled, because a sample peak under-reads
-//! anything whose crest falls between samples.
+//! Loudness follows ITU-R BS.1770-4's shape: K-weighting plus the two-stage
+//! gate. It is not certified against the ITU conformance suite — the RLB
+//! high-pass keeps `pyloudnorm`'s un-normalised numerator, a flat +0.047 dB at
+//! 44.1 kHz. The filter is designed from the analog prototype rather than copied
+//! from the 48 kHz coefficient table, because a hard-coded table silently
+//! mis-weights every 44.1 kHz file. True peak is 4x oversampled, because a
+//! sample peak under-reads anything whose crest falls between samples.
 
 use std::path::Path;
 
@@ -357,6 +359,7 @@ pub fn fingerprint(path: &Path) -> anyhow::Result<Fingerprint> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::decode::write_wav;
 
     /// A mono sine with a known RMS, so the expected LUFS is known in advance.
     fn sine(rate: u32, hz: f64, rms_dbfs: f64, secs: f64, phase: f64) -> Pcm {
@@ -401,5 +404,65 @@ mod tests {
             std::f64::consts::FRAC_PI_4,
         ));
         assert!((fp.tp - 0.0).abs() < 0.5, "true peak was {} dBFS", fp.tp);
+    }
+
+    /// A 90 s mono WAV whose only signal is a -20 dBFS 1 kHz tone in
+    /// `from..to` seconds. Everything else is digital silence, so a window that
+    /// is never decoded contributes nothing above the -70 LUFS absolute gate.
+    fn tone_window_wav(name: &str, from: f64, to: f64) -> std::path::PathBuf {
+        let rate = 44_100u32;
+        let n = (rate as f64 * 90.0) as usize;
+        let mut samples = vec![0f32; n];
+        let a = (rate as f64 * from) as usize;
+        let b = (rate as f64 * to) as usize;
+        let amp = 10f64.powf(-20.0 / 20.0) * std::f64::consts::SQRT_2;
+        for (i, s) in samples.iter_mut().enumerate().take(b).skip(a) {
+            let t = 2.0 * std::f64::consts::PI * 1000.0 * (i - a) as f64 / rate as f64;
+            *s = (amp * t.sin()) as f32;
+        }
+        let dir = std::env::temp_dir().join("measured-fp-window");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(name);
+        write_wav(
+            &Pcm {
+                rate,
+                channels: 1,
+                samples,
+            },
+            &path,
+        )
+        .unwrap();
+        path
+    }
+
+    /// F4: a track longer than three windows is measured from head, middle and
+    /// tail. The tone sits only in the middle window, so a head-only read would
+    /// gate every block out and report the -70 floor instead.
+    #[test]
+    fn long_track_reads_the_middle_window() {
+        let path = tone_window_wav("middle.wav", 45.0, 65.0);
+        let fp = fingerprint(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert!((fp.dur - 90.0).abs() < 0.5, "duration was {}", fp.dur);
+        assert!(
+            fp.lufs > -30.0,
+            "middle window was not read: LUFS {}",
+            fp.lufs
+        );
+        assert!((fp.lufs + 20.0).abs() < 1.5, "LUFS was {}", fp.lufs);
+    }
+
+    /// Same file shape, tone only in the tail window [70, 90).
+    #[test]
+    fn long_track_reads_the_tail_window() {
+        let path = tone_window_wav("tail.wav", 70.0, 90.0);
+        let fp = fingerprint(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert!(
+            fp.lufs > -30.0,
+            "tail window was not read: LUFS {}",
+            fp.lufs
+        );
+        assert!((fp.lufs + 20.0).abs() < 1.5, "LUFS was {}", fp.lufs);
     }
 }
