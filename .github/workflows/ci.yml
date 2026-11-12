@@ -37,8 +37,8 @@ jobs:
 
   rust-lint:
     name: rust lint
-    # Blocking: the tree is rustfmt-clean and clippy is silent on it, so a red
-    # lint job means a real regression rather than pre-existing debt.
+    # Blocking: the tree is rustfmt-clean, so a red lint job means a real
+    # regression rather than pre-existing debt.
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -66,7 +66,7 @@ jobs:
         with:
           workspaces: rust
       - name: clippy
-        run: cargo clippy -p measured-core --all-targets
+        run: cargo clippy -p measured-core --all-targets -- -D warnings
       - name: test
         run: cargo test -p measured-core
 

@@ -381,7 +381,11 @@ async fn run_with_timeout(
     mut cmd: tokio::process::Command,
     secs: u64,
 ) -> Result<std::process::Output, String> {
-    cmd.kill_on_drop(true);
+    // wait_with_output only reads handles that were piped; with inherited stdio
+    // it returns empty buffers and every caller would see "no output".
+    cmd.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
     let child = cmd.spawn().map_err(|e| format!("spawn failed: {e}"))?;
     match tokio::time::timeout(
         std::time::Duration::from_secs(secs),
@@ -504,7 +508,9 @@ pub async fn yt_download(
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
 
-    let out = run_with_timeout(cmd, 120).await?;
+    // A download is minutes of transfer, not a lookup: 120s would kill a long
+    // mix on a slow link, so the cap is generous but still finite.
+    let out = run_with_timeout(cmd, 900).await?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
         let tail: String = err

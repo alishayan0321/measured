@@ -322,14 +322,19 @@ fn serve_file(
 /// TLS handshake every megabyte, which cost more than the fetch itself.
 static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
 
-fn client() -> &'static reqwest::Client {
-    CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .user_agent(UA)
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .unwrap_or_default()
-    })
+fn client() -> Result<&'static reqwest::Client, String> {
+    if let Some(c) = CLIENT.get() {
+        return Ok(c);
+    }
+    let built = reqwest::Client::builder()
+        .user_agent(UA)
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let _ = CLIENT.set(built);
+    CLIENT
+        .get()
+        .ok_or_else(|| "http client unavailable".to_string())
 }
 
 /// Fetch `[start, end]` (inclusive) from upstream - always a bounded range,
@@ -337,7 +342,7 @@ fn client() -> &'static reqwest::Client {
 /// the upstream content type, which is per-stream: m4a is not webm.
 fn fetch_range(url: &str, start: usize, end: usize) -> Result<(Vec<u8>, String), String> {
     let (status, ctype, bytes) = tauri::async_runtime::block_on(async move {
-        let resp = client()
+        let resp = client()?
             .get(url)
             .header("Range", format!("bytes={start}-{end}"))
             .send()
