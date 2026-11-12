@@ -375,8 +375,8 @@ fn ytdlp_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
 }
 
 /// Run a child process with a hard deadline. yt-dlp can sit on a stalled
-/// socket indefinitely; `kill_on_drop` is what actually reaps it when the
-/// timeout fires, because dropping the future drops the child handle.
+/// socket indefinitely; `kill_on_drop` sends the kill as soon as the timeout
+/// future is dropped, so the caller returns instead of waiting on the child.
 async fn run_with_timeout(
     mut cmd: tokio::process::Command,
     secs: u64,
@@ -394,7 +394,7 @@ async fn run_with_timeout(
     .await
     {
         Ok(Ok(out)) => Ok(out),
-        Ok(Err(e)) => Err(format!("spawn failed: {e}")),
+        Ok(Err(e)) => Err(format!("yt-dlp failed: {e}")),
         Err(_) => Err(format!("yt-dlp timed out after {secs}s")),
     }
 }
