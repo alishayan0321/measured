@@ -68,8 +68,10 @@ android/                WebView shell, JNI bridge, NewPipeExtractor wrapper, Gra
 | --- | --- |
 | `decode.rs` | open any symphonia-supported container, decode to f32 PCM, write a 44-byte-header WAV for the converter cache, report duration |
 | `scan.rs` | walk a folder, parse names, build `Track`/`Library`, stable sort by artist+title |
-| `fp.rs` | LUFS, true peak, crest, 95 % roll-off and 26 log-spaced bands (2048-point FFT, first 60 s) |
+| `fp.rs` | LUFS, true peak, crest, 95 % roll-off and 26 log-spaced bands (2048-point FFT over 20 s head, middle and tail windows; a track under 60 s is read whole) |
 | `thumb.rs` | cover-crop, resize (Lanczos3), JPEG encode, average colour |
+
+Loudness follows BS.1770's shape — K-weighting, 400 ms blocks on a 100 ms hop, a -70 LUFS absolute gate and a -10 LU relative gate — and true peak is 4x oversampled. It is **not** certified against the ITU conformance suite. The RLB high-pass leaves its numerator undivided by `a0` (matching the reference `pyloudnorm` implementation), which is a flat gain error of +0.047 dB at 44.1 kHz and +0.043 dB at 48 kHz across everything the filter passes. That sits inside the ±0.5 LU the tests assert, but it means "BS.1770-shaped", not "BS.1770 compliant".
 
 ### Desktop commands (Tauri IPC)
 
