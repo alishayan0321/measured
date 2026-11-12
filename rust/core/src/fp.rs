@@ -64,8 +64,16 @@ pub fn fingerprint(path: &Path) -> anyhow::Result<Fingerprint> {
         prev_in = *s;
         sum_sq += (hp as f64) * (hp as f64);
     }
-    let mean_sq = if mono.is_empty() { 0.0 } else { sum_sq / mono.len() as f64 };
-    let lufs = if mean_sq > 0.0 { (-0.691 + 10.0 * mean_sq.log10()) as f32 } else { -70.0 };
+    let mean_sq = if mono.is_empty() {
+        0.0
+    } else {
+        sum_sq / mono.len() as f64
+    };
+    let lufs = if mean_sq > 0.0 {
+        (-0.691 + 10.0 * mean_sq.log10()) as f32
+    } else {
+        -70.0
+    };
 
     // peaks
     let mut tp: f32 = 0.0;
@@ -82,13 +90,19 @@ pub fn fingerprint(path: &Path) -> anyhow::Result<Fingerprint> {
     } else {
         (peak_sum_sq / pcm.samples.len() as f64).sqrt() as f32
     };
-    let crest = if rms > 0.0 { 20.0 * (tp / rms).log10() } else { 0.0 };
+    let crest = if rms > 0.0 {
+        20.0 * (tp / rms).log10()
+    } else {
+        0.0
+    };
 
     // spectrum
     let mut planner = FftPlanner::<f32>::new();
     let fft = planner.plan_fft_forward(FFT_SIZE);
     let window: Vec<f32> = (0..FFT_SIZE)
-        .map(|i| 0.5 - 0.5 * ((2.0 * std::f32::consts::PI * i as f32) / (FFT_SIZE as f32 - 1.0)).cos())
+        .map(|i| {
+            0.5 - 0.5 * ((2.0 * std::f32::consts::PI * i as f32) / (FFT_SIZE as f32 - 1.0)).cos()
+        })
         .collect();
 
     let mut acc = vec![0f64; FFT_SIZE / 2 + 1];
@@ -139,7 +153,7 @@ pub fn fingerprint(path: &Path) -> anyhow::Result<Fingerprint> {
     if frames > 0 && total_energy > 0.0 {
         let f_lo = 40f32;
         let f_hi = 16_000f32;
-        for b in 0..BANDS {
+        for (b, band) in bands.iter_mut().enumerate() {
             let t0 = b as f32 / BANDS as f32;
             let t1 = (b + 1) as f32 / BANDS as f32;
             let hz0 = f_lo * (f_hi / f_lo).powf(t0);
@@ -147,12 +161,16 @@ pub fn fingerprint(path: &Path) -> anyhow::Result<Fingerprint> {
             let k0 = ((hz0 / bin_hz).floor() as usize).max(1);
             let k1 = ((hz1 / bin_hz).ceil() as usize).min(FFT_SIZE / 2);
             let mut e = 0f64;
-            for k in k0..k1.max(k0 + 1) {
-                e += acc[k];
+            for v in acc.iter().take(k1.max(k0 + 1)).skip(k0) {
+                e += *v;
             }
             let norm = e / total_energy;
-            let db = if norm > 1e-12 { 10.0 * norm.log10() } else { -120.0 };
-            bands[b] = db.max(-120.0) as f32;
+            let db = if norm > 1e-12 {
+                10.0 * norm.log10()
+            } else {
+                -120.0
+            };
+            *band = db.max(-120.0) as f32;
         }
     }
 

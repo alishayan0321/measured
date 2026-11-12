@@ -5,7 +5,7 @@
 //! AIFF/WMA at all, which is exactly what this fixes: AIFF decodes here.
 
 use std::fs::{self, File};
-use std::io::{BufWriter, Write};
+use std::io::{BufWriter, Seek, SeekFrom, Write};
 use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
@@ -26,11 +26,7 @@ pub struct Pcm {
 
 impl Pcm {
     pub fn frames(&self) -> usize {
-        if self.channels == 0 {
-            0
-        } else {
-            self.samples.len() / self.channels
-        }
+        self.samples.len().checked_div(self.channels).unwrap_or(0)
     }
 
     /// Mono mixdown, handy for analysis.
@@ -56,7 +52,12 @@ fn open_track(path: &Path) -> Result<(Box<dyn symphonia::core::formats::FormatRe
     }
 
     let probed = symphonia::default::get_probe()
-        .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
+        .format(
+            &hint,
+            mss,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
         .with_context(|| format!("probe {}", path.display()))?;
 
     let reader = probed.format;
@@ -83,11 +84,7 @@ pub fn decode_file(path: &Path) -> Result<Pcm> {
         .context("create decoder")?;
 
     let mut rate = params.sample_rate.unwrap_or(44_100);
-    let mut channels = params
-        .channels
-        .map(|c| c.count())
-        .unwrap_or(2)
-        .max(1);
+    let mut channels = params.channels.map(|c| c.count()).unwrap_or(2).max(1);
 
     let mut samples: Vec<f32> = Vec::new();
     let mut sample_buf: Option<SampleBuffer<f32>> = None;
@@ -107,7 +104,9 @@ pub fn decode_file(path: &Path) -> Result<Pcm> {
                 let spec = *decoded.spec();
                 rate = spec.rate;
                 channels = spec.channels.count().max(1);
-                if sample_buf.is_none() || sample_buf.as_ref().map(|b| b.capacity()) < Some(decoded.capacity() as usize) {
+                if sample_buf.is_none()
+                    || sample_buf.as_ref().map(|b| b.capacity()) < Some(decoded.capacity())
+                {
                     sample_buf = Some(SampleBuffer::<f32>::new(decoded.capacity() as u64, spec));
                 }
                 if let Some(buf) = sample_buf.as_mut() {
@@ -124,7 +123,11 @@ pub fn decode_file(path: &Path) -> Result<Pcm> {
     if samples.is_empty() {
         return Err(anyhow!("no audio decoded from {}", path.display()));
     }
-    Ok(Pcm { rate, channels, samples })
+    Ok(Pcm {
+        rate,
+        channels,
+        samples,
+    })
 }
 
 pub fn duration_ms(path: &Path) -> Result<u64> {
@@ -147,6 +150,33 @@ pub fn duration_ms(path: &Path) -> Result<u64> {
     Ok(((pcm.frames() as f64 / pcm.rate as f64) * 1000.0) as u64)
 }
 
+/// Canonical 44-byte PCM WAV header.
+///
+/// `data_len` is written into both size fields. The streaming writer passes 0
+/// and patches them afterwards, because it does not know the length until the
+/// last packet has been decoded.
+fn wav_header(rate: u32, channels: usize, data_len: u32) -> [u8; 44] {
+    let bits = 16u16;
+    let block_align = (channels as u16) * (bits / 8);
+    let byte_rate = rate * block_align as u32;
+
+    let mut h = [0u8; 44];
+    h[0..4].copy_from_slice(b"RIFF");
+    h[4..8].copy_from_slice(&(36 + data_len).to_le_bytes());
+    h[8..12].copy_from_slice(b"WAVE");
+    h[12..16].copy_from_slice(b"fmt ");
+    h[16..20].copy_from_slice(&16u32.to_le_bytes());
+    h[20..22].copy_from_slice(&1u16.to_le_bytes()); // PCM
+    h[22..24].copy_from_slice(&(channels as u16).to_le_bytes());
+    h[24..28].copy_from_slice(&rate.to_le_bytes());
+    h[28..32].copy_from_slice(&byte_rate.to_le_bytes());
+    h[32..34].copy_from_slice(&block_align.to_le_bytes());
+    h[34..36].copy_from_slice(&bits.to_le_bytes());
+    h[36..40].copy_from_slice(b"data");
+    h[40..44].copy_from_slice(&data_len.to_le_bytes());
+    h
+}
+
 /// Write 16-bit PCM WAV. The WebView and every Android media stack play this,
 /// which is why non-native containers are transcoded to WAV rather than MP3.
 pub fn write_wav(pcm: &Pcm, out: &Path) -> Result<()> {
@@ -154,28 +184,17 @@ pub fn write_wav(pcm: &Pcm, out: &Path) -> Result<()> {
         fs::create_dir_all(parent).ok();
     }
     let tmp = out.with_extension("part");
-
-    let bits = 16u16;
-    let block_align = (pcm.channels as u16) * (bits / 8);
-    let byte_rate = pcm.rate * block_align as u32;
-    let data_len = (pcm.samples.len() * 2) as u32;
+    let data_len = u32::try_from(pcm.samples.len() * 2).map_err(|_| {
+        anyhow!(
+            "track too long for a WAV file: {} samples",
+            pcm.samples.len()
+        )
+    })?;
 
     {
         let f = File::create(&tmp).with_context(|| format!("create {}", tmp.display()))?;
         let mut w = BufWriter::new(f);
-        w.write_all(b"RIFF")?;
-        w.write_all(&(36 + data_len).to_le_bytes())?;
-        w.write_all(b"WAVE")?;
-        w.write_all(b"fmt ")?;
-        w.write_all(&16u32.to_le_bytes())?;
-        w.write_all(&1u16.to_le_bytes())?; // PCM
-        w.write_all(&(pcm.channels as u16).to_le_bytes())?;
-        w.write_all(&pcm.rate.to_le_bytes())?;
-        w.write_all(&byte_rate.to_le_bytes())?;
-        w.write_all(&block_align.to_le_bytes())?;
-        w.write_all(&bits.to_le_bytes())?;
-        w.write_all(b"data")?;
-        w.write_all(&data_len.to_le_bytes())?;
+        w.write_all(&wav_header(pcm.rate, pcm.channels, data_len))?;
 
         let mut chunk: Vec<u8> = Vec::with_capacity(64 * 1024);
         for s in &pcm.samples {
@@ -196,8 +215,106 @@ pub fn write_wav(pcm: &Pcm, out: &Path) -> Result<()> {
     Ok(())
 }
 
-/// decode + transcode in one step; returns the output path.
+/// Decode `src` into a 16-bit WAV at `out` without holding the track in RAM.
+///
+/// `decode_file` keeps every sample as f32 — roughly 100 MB for a five-minute
+/// stereo track and well over a gigabyte for a long mix — which is fine for the
+/// 60-second fingerprint window but not for transcoding. This writes the header
+/// with placeholder sizes, appends PCM as packets arrive, then patches the two
+/// size fields and renames the finished file into place.
 pub fn decode_to_wav(src: &Path, out: &Path) -> Result<()> {
-    let pcm = decode_file(src)?;
-    write_wav(&pcm, out)
+    if let Some(parent) = out.parent() {
+        fs::create_dir_all(parent).ok();
+    }
+    let tmp = out.with_extension("part");
+
+    let (mut reader, track_id) = open_track(src)?;
+    let params = reader
+        .tracks()
+        .iter()
+        .find(|t| t.id == track_id)
+        .map(|t| t.codec_params.clone())
+        .ok_or_else(|| anyhow!("missing track {track_id}"))?;
+    let mut decoder = symphonia::default::get_codecs()
+        .make(&params, &DecoderOptions::default())
+        .context("create decoder")?;
+
+    let mut sample_buf: Option<SampleBuffer<f32>> = None;
+    let mut data_len: u64 = 0;
+    let mut header_written = false;
+
+    {
+        let f = File::create(&tmp).with_context(|| format!("create {}", tmp.display()))?;
+        let mut w = BufWriter::new(f);
+        let mut chunk: Vec<u8> = Vec::with_capacity(64 * 1024);
+
+        loop {
+            let packet = match reader.next_packet() {
+                Ok(p) => p,
+                Err(SymError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                Err(SymError::ResetRequired) => break,
+                Err(e) => return Err(anyhow!("read packet: {e}")),
+            };
+            if packet.track_id() != track_id {
+                continue;
+            }
+            match decoder.decode(&packet) {
+                Ok(decoded) => {
+                    let spec = *decoded.spec();
+                    // The header needs the real rate and channel count, and some
+                    // containers only reveal them on the first decoded packet,
+                    // so nothing is written until one has been decoded.
+                    if !header_written {
+                        w.write_all(&wav_header(spec.rate, spec.channels.count().max(1), 0))?;
+                        header_written = true;
+                    }
+                    if sample_buf.is_none()
+                        || sample_buf.as_ref().map(|b| b.capacity()) < Some(decoded.capacity())
+                    {
+                        sample_buf =
+                            Some(SampleBuffer::<f32>::new(decoded.capacity() as u64, spec));
+                    }
+                    if let Some(buf) = sample_buf.as_mut() {
+                        buf.copy_interleaved_ref(decoded);
+                        for s in buf.samples() {
+                            let v = (s.clamp(-1.0, 1.0) * 32767.0) as i16;
+                            chunk.extend_from_slice(&v.to_le_bytes());
+                        }
+                        data_len += chunk.len() as u64;
+                        w.write_all(&chunk)?;
+                        chunk.clear();
+                    }
+                }
+                Err(SymError::DecodeError(_)) => continue,
+                Err(SymError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                Err(e) => return Err(anyhow!("decode: {e}")),
+            }
+        }
+        w.flush()?;
+    }
+
+    if !header_written || data_len == 0 {
+        fs::remove_file(&tmp).ok();
+        return Err(anyhow!("no audio decoded from {}", src.display()));
+    }
+    if data_len > u32::MAX as u64 {
+        fs::remove_file(&tmp).ok();
+        return Err(anyhow!("track too long for a WAV file: {data_len} bytes"));
+    }
+
+    // Patch the two size fields the header had to leave at zero.
+    {
+        let mut f = fs::OpenOptions::new()
+            .write(true)
+            .open(&tmp)
+            .with_context(|| format!("reopen {}", tmp.display()))?;
+        f.seek(SeekFrom::Start(4))?;
+        f.write_all(&(36 + data_len as u32).to_le_bytes())?;
+        f.seek(SeekFrom::Start(40))?;
+        f.write_all(&(data_len as u32).to_le_bytes())?;
+        f.flush()?;
+    }
+
+    fs::rename(&tmp, out).with_context(|| format!("rename into {}", out.display()))?;
+    Ok(())
 }
