@@ -22,6 +22,7 @@ import org.schabi.newpipe.extractor.stream.StreamInfo;
 import org.schabi.newpipe.extractor.stream.StreamInfoItem;
 import org.schabi.newpipe.extractor.stream.VideoStream;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -167,34 +168,55 @@ final class Yt {
                     if (stem.length() > 80) stem = stem.substring(0, 80).trim();
                     if (stem.isEmpty()) stem = "YouTube " + id;
                     File out = MainActivity.uniqueFile(dir, stem + "." + ext);
+                    /* Write beside the target and rename at the end: a half-written
+                       take must never be visible as a library entry, because the
+                       scan would list it and the decoder would then fail on it. */
+                    File part = new File(dir, out.getName() + ".part");
 
-                    HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-                    c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/131.0 Mobile Safari/537.36");
-                    c.setConnectTimeout(20000);
-                    c.setReadTimeout(30000);
-                    c.connect();
-                    if (c.getResponseCode() / 100 != 2) {
-                        done(web, token, false, "download failed: HTTP " + c.getResponseCode());
-                        return;
+                    try {
+                        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+                        c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/131.0 Mobile Safari/537.36");
+                        c.setConnectTimeout(20000);
+                        c.setReadTimeout(30000);
+                        c.connect();
+                        if (c.getResponseCode() / 100 != 2) {
+                            c.disconnect();
+                            done(web, token, false, "download failed: HTTP " + c.getResponseCode());
+                            return;
+                        }
+                        long wrote = 0;
+                        InputStream in = null;
+                        FileOutputStream fos = null;
+                        try {
+                            in = c.getInputStream();
+                            fos = new FileOutputStream(part);
+                            byte[] buf = new byte[65536];
+                            int n;
+                            while ((n = in.read(buf)) > 0) {
+                                fos.write(buf, 0, n);
+                                wrote += n;
+                            }
+                            fos.flush();
+                        } finally {
+                            if (fos != null) try { fos.close(); } catch (IOException ignored) { }
+                            if (in != null) try { in.close(); } catch (IOException ignored) { }
+                            c.disconnect();
+                        }
+                        if (wrote < 20000) {
+                            part.delete();
+                            done(web, token, false, "download too small (" + wrote + " bytes)");
+                            return;
+                        }
+                        if (!part.renameTo(out)) {
+                            part.delete();
+                            done(web, token, false, "cannot save the file");
+                            return;
+                        }
+                        done(web, token, true, out.getName());
+                    } catch (Throwable t) {
+                        part.delete();
+                        done(web, token, false, msg(t));
                     }
-                    InputStream in = c.getInputStream();
-                    FileOutputStream fos = new FileOutputStream(out);
-                    byte[] buf = new byte[65536];
-                    int n;
-                    long wrote = 0;
-                    while ((n = in.read(buf)) > 0) {
-                        fos.write(buf, 0, n);
-                        wrote += n;
-                    }
-                    fos.close();
-                    in.close();
-                    c.disconnect();
-                    if (wrote < 20000) {
-                        out.delete();
-                        done(web, token, false, "download too small (" + wrote + " bytes)");
-                        return;
-                    }
-                    done(web, token, true, out.getName());
                 } catch (Throwable t) {
                     done(web, token, false, msg(t));
                 }
@@ -292,15 +314,19 @@ final class Yt {
             }
             int code = conn.getResponseCode();
             InputStream in = code >= 400 ? conn.getErrorStream() : conn.getInputStream();
-            StringBuilder sb = new StringBuilder();
+            ByteArrayOutputStream body = new ByteArrayOutputStream();
             if (in != null) {
                 byte[] buf = new byte[16384];
                 int n;
-                while ((n = in.read(buf)) > 0) sb.append(new String(buf, 0, n, "UTF-8"));
+                while ((n = in.read(buf)) > 0) body.write(buf, 0, n);
                 in.close();
             }
             conn.disconnect();
-            return new Response(code, conn.getResponseMessage(), conn.getHeaderFields(), sb.toString(), request.url());
+            /* Decode once, after the last byte is in. Decoding each 16 KB chunk on
+               its own splits any multi-byte character that straddles the boundary
+               and turns both halves into U+FFFD, which corrupts the JSON body. */
+            return new Response(code, conn.getResponseMessage(), conn.getHeaderFields(),
+                    body.toString("UTF-8"), request.url());
         }
     }
 }
