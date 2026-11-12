@@ -1,29 +1,47 @@
 // Builds the signed MEASURED APK.
-//   node build.cjs          full build (ships every song)
-//   node build.cjs --fast   links/signs without the songs (toolchain smoke test)
+//   node build.cjs               full build (ships every song)
+//   node build.cjs --fast        links/signs without the songs (toolchain smoke test)
+//   node build.cjs --stage-only  stage the web assets and stop (used by test/stage.test.cjs)
 //
 // Pipeline: stage assets → aapt2 compile → aapt2 link → javac → d8 → append
 // classes.dex → zipalign → apksigner (self-signed, 30y).
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 
 const HERE = __dirname;
 const PLAYER = path.join(HERE, '..');
-const BUILD = path.join(PLAYER, 'build');
-const JDK = path.join(BUILD, 'jdk', 'jdk-17.0.20.1+1');
-const SDK = path.join(BUILD, 'sdk');
+
+// Toolchain roots. The defaults are the layout this workspace ships with
+// (build/jdk + build/sdk); MEASURED_BUILD relocates both at once, and the two
+// specific variables win over it so a machine with a system JDK and a
+// separately downloaded SDK can mix them.
+const BUILD = process.env.MEASURED_BUILD
+  ? path.resolve(process.env.MEASURED_BUILD)
+  : path.join(PLAYER, 'build');
+const JDK = process.env.MEASURED_JAVA_HOME
+  ? path.resolve(process.env.MEASURED_JAVA_HOME)
+  : path.join(BUILD, 'jdk', 'jdk-17.0.20.1+1');
+const SDK = process.env.MEASURED_ANDROID_SDK
+  ? path.resolve(process.env.MEASURED_ANDROID_SDK)
+  : path.join(BUILD, 'sdk');
 const BT = path.join(SDK, 'build-tools', '34.0.0');
 const ANDROID_JAR = path.join(SDK, 'platforms', 'android-34', 'android.jar');
 const SONGS = process.env.MEASURED_SONGS || path.join(HERE, '..', '..', 'songs');
 
 const OUT = path.join(HERE, 'out');
-const ASSETS = path.join(HERE, 'assets');
+// MEASURED_STAGE_OUT redirects the staged web assets so the stage test can
+// build a throwaway tree instead of overwriting android/assets.
+const ASSETS = process.env.MEASURED_STAGE_OUT
+  ? path.resolve(process.env.MEASURED_STAGE_OUT)
+  : path.join(HERE, 'assets');
 const GEN = path.join(HERE, 'gen');
 const CLASSES = path.join(HERE, 'classes');
 const DEX = path.join(HERE, 'dex');
 
 const FAST = process.argv.includes('--fast');
+const STAGE_ONLY = process.argv.includes('--stage-only');
 
 // Single source of truth for the shipped version: the desktop Tauri config is
 // bumped at release time, so the APK follows it instead of drifting behind.
@@ -96,29 +114,59 @@ function copyTree(from, to, filter) {
 }
 
 // ── 0. sanity ────────────────────────────────────────────────────────────────
-for (const p of [JDK, BT, ANDROID_JAR]) {
-  if (!fs.existsSync(p)) {
-    console.error('missing toolchain: ' + p);
-    process.exit(1);
+// --stage-only never touches the toolchain, so it must not demand one.
+if (!STAGE_ONLY) {
+  for (const p of [JDK, BT, ANDROID_JAR]) {
+    if (!fs.existsSync(p)) {
+      console.error('missing toolchain: ' + p);
+      process.exit(1);
+    }
   }
 }
-console.log(`MEASURED android build  ${FAST ? '(fast, no songs)' : '(full)'}`);
+console.log(
+  `MEASURED android build  ${STAGE_ONLY ? '(stage only)' : FAST ? '(fast, no songs)' : '(full)'}`,
+);
 
 // ── 1. stage assets ──────────────────────────────────────────────────────────
-rm(ASSETS); rm(GEN); rm(CLASSES); rm(DEX); fs.mkdirSync(OUT, { recursive: true });
-
 // 'styles' is load-bearing: since 2.0.2 the interface's CSS lives in
 // styles/app.css and styles/base.css instead of an inline <style> block, so an
 // APK built without it installs a completely unstyled player.
-const WEB = ['index.html', 'api.js', 'deck', 'lib', 'styles', 'thumbs', 'fingerprints.js', 'library.json'];
+// 'embeddings.json' is fetched by index.html at boot; without it the
+// recommender's embedding feature 404s on the phone exactly as it did on
+// desktop. 'icon.png' is the page's <link rel="icon">.
+const WEB = [
+  'index.html',
+  'api.js',
+  'deck',
+  'lib',
+  'styles',
+  'thumbs',
+  'fingerprints.js',
+  'library.json',
+  'embeddings.json',
+  'icon.png',
+];
 const webDir = path.join(ASSETS, 'player');
-fs.mkdirSync(webDir, { recursive: true });
-for (const name of WEB) {
-  const src = path.join(PLAYER, name);
-  if (!fs.existsSync(src)) { console.log(`  ~ skip ${name} (not built yet)`); continue; }
-  const dst = path.join(webDir, name);
-  if (fs.statSync(src).isDirectory()) copyTree(src, dst, (p, n) => !n.endsWith('.cjs'));
-  else fs.copyFileSync(src, dst);
+
+function stageWeb() {
+  fs.mkdirSync(webDir, { recursive: true });
+  for (const name of WEB) {
+    const src = path.join(PLAYER, name);
+    if (!fs.existsSync(src)) { console.log(`  ~ skip ${name} (not built yet)`); continue; }
+    const dst = path.join(webDir, name);
+    if (fs.statSync(src).isDirectory()) copyTree(src, dst, (p, n) => !n.endsWith('.cjs'));
+    else fs.copyFileSync(src, dst);
+  }
+}
+
+rm(ASSETS);
+if (!STAGE_ONLY) {
+  rm(GEN); rm(CLASSES); rm(DEX); fs.mkdirSync(OUT, { recursive: true });
+}
+stageWeb();
+if (STAGE_ONLY) {
+  console.log(`staged web assets -> ${webDir}`);
+  process.exit(0);
 }
 
 const AUDIO = /\.(mp3|webm|flac|m4a|ogg|opus|wav|aac)$/i;
@@ -214,11 +262,46 @@ rm(aligned);
 run('zipalign', exe('zipalign'), ['-p', '-f', '4', unsigned, aligned]);
 
 const keystore = path.join(HERE, 'measured.keystore');
+const KS_PASS_FILE = path.join(HERE, 'measured.keystore.pass');
+
+// The signing password must not live in the source tree: anyone holding it
+// could sign a look-alike build that Android accepts as an update. Resolution
+// order is MEASURED_KS_PASS → the gitignored sidecar file → a freshly generated
+// random password written to that file. An existing keystore with no known
+// password is a hard error, because quietly generating a new one would sign the
+// APK with a different key than the build already installed on a phone.
+function keystorePassword(keystoreExists) {
+  if (process.env.MEASURED_KS_PASS) return process.env.MEASURED_KS_PASS;
+  try {
+    const saved = fs.readFileSync(KS_PASS_FILE, 'utf8').trim();
+    if (saved) return saved;
+  } catch {
+    // no sidecar yet — fall through to generate one
+  }
+  if (keystoreExists) {
+    console.error(
+      `\n[FAIL] ${keystore} exists but its password is unknown.\n` +
+        `Set MEASURED_KS_PASS, write the password to ${KS_PASS_FILE}, ` +
+        `or delete the keystore to generate a new one.`,
+    );
+    process.exit(1);
+  }
+  const generated = crypto.randomBytes(24).toString('base64url');
+  fs.writeFileSync(KS_PASS_FILE, generated + '\n', { mode: 0o600 });
+  console.log(`  keystore password generated -> ${KS_PASS_FILE} (gitignored)`);
+  return generated;
+}
+
+const KS_PASS = keystorePassword(fs.existsSync(keystore));
+// Hand the secret to the tools through the child environment rather than argv,
+// so it never shows up in a process listing.
+env.MEASURED_KS_PASS = KS_PASS;
+
 if (!fs.existsSync(keystore)) {
   run('keytool', jdkBin('keytool'), [
     '-genkeypair', '-keystore', keystore, '-alias', 'measured',
     '-keyalg', 'RSA', '-keysize', '2048', '-validity', '10950',
-    '-storepass', 'measured2026', '-keypass', 'measured2026',
+    '-storepass:env', 'MEASURED_KS_PASS', '-keypass:env', 'MEASURED_KS_PASS',
     '-dname', 'CN=MEASURED, O=MEASURED, C=US',
   ]);
 }
@@ -227,7 +310,7 @@ const apk = path.join(OUT, 'MEASURED.apk');
 rm(apk);
 javaJar('apksigner', SIGNER_JAR, [
   'sign', '--ks', keystore, '--ks-key-alias', 'measured',
-  '--ks-pass', 'pass:measured2026', '--key-pass', 'pass:measured2026',
+  '--ks-pass', 'env:MEASURED_KS_PASS', '--key-pass', 'env:MEASURED_KS_PASS',
   '--out', apk, aligned,
 ]);
 javaJar('apksigner verify', SIGNER_JAR, ['verify', '--verbose', apk]);

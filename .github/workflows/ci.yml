@@ -29,6 +29,30 @@ jobs:
         run: node test/repeat.test.cjs
       - name: embed
         run: node test/embed.test.cjs
+      - name: stage
+        # Both packaged builds have shipped a 404 (styles/ on Android,
+        # embeddings.json on both), so the bundles are checked against the
+        # page's own references rather than against the staging lists.
+        run: node test/stage.test.cjs
+
+  rust-lint:
+    name: rust lint (advisory)
+    # Advisory on purpose: the tree is not rustfmt-clean yet, and
+    # `clippy -D warnings` still reports six findings in rust/core. The checks
+    # run and report on every push; drop continue-on-error in the same change
+    # that formats the sources and clears those findings.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: fmt
+        run: cargo fmt --all --check
 
   rust-core:
     name: rust core
@@ -58,6 +82,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
@@ -69,5 +95,11 @@ jobs:
       - name: stage web UI
         # frontendDist points at desktop/dist, which is generated, not committed.
         run: node stage-ui.cjs
+      - name: clippy (workspace, strict)
+        # The workspace-wide strict lint lives here because the desktop crate
+        # only builds on Windows. Advisory for the same reason as rust-lint:
+        # rust/core still trips -D warnings.
+        continue-on-error: true
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: check
         run: cargo check -p measured-desktop

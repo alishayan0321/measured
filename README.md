@@ -22,7 +22,7 @@ On Android, tap the APK, allow your browser or file manager to *install unknown 
 - **Everyone gets the styles.** `android/build.cjs` staged every web asset except `styles/`, so any APK built after the 2.0.2 CSS split would have installed an unstyled player. It is staged now.
 - Version strings bumped to 2.0.3. The executable reports `FileVersion 2.0.3`.
 
-Full history: [2.0.2](RELEASE-2.0.2.md) · [2.0.1](RELEASE-2.0.1.md) · [2.0.0](RELEASE-2.0.0.md).
+Full history: [2.0.2](docs/releases/RELEASE-2.0.2.md) · [2.0.1](docs/releases/RELEASE-2.0.1.md) · [2.0.0](docs/releases/RELEASE-2.0.0.md).
 
 ## The 2.0 feature set
 
@@ -102,14 +102,14 @@ node build.cjs            # full build with songs
 node build.cjs --fast     # code-only build, skips the 465 MB of audio
 ```
 
-`rust/stage-ui.cjs` assembles the web assets into `rust/desktop/dist` before the desktop build; it stages `index.html`, `api.js`, `thumbs/`, `styles/` and `icon.png`.
+`rust/stage-ui.cjs` assembles the web assets into `rust/desktop/dist` before the desktop build; it stages `index.html`, `api.js`, `lib/`, `deck/`, `styles/`, `thumbs/`, the fingerprint and embedding data and `icon.png`.
 
-`android/build.cjs` is deliberately Gradle-free: `aapt2 compile/link`, `javac`, `d8`, a zip append for `classes.dex`, `zipalign`, `apksigner`. It resolves the SDK through `player/build` in this workspace — point `BUILD` at your own SDK if you fork this.
+`android/build.cjs` is deliberately Gradle-free: `aapt2 compile/link`, `javac`, `d8`, a zip append for `classes.dex`, `zipalign`, `apksigner`. It resolves the toolchain through `build/` in this workspace; set `MEASURED_BUILD` to relocate both roots at once, or `MEASURED_ANDROID_SDK` / `MEASURED_JAVA_HOME` to point at an SDK and JDK you already have. `node build.cjs --stage-only` stages the web assets and stops, which is what `test/stage.test.cjs` uses.
 
 ## Privacy and security
 
 - **No accounts, no analytics, no crash reporting.** Nothing is uploaded unless you search Nowhere or play a downloaded station.
-- **No secrets in this repository.** The signing keystore, the songs, the built binaries and every token live outside git (see `.gitignore`). The only key in the source is YouTube's *public* InnerTube web client key (`AIza…`), the same one youtube.com ships in its own JavaScript; it is not an account credential.
+- **No secrets in this repository.** The signing keystore, its password, the songs, the built binaries and every token live outside git (see `.gitignore`). The keystore password is read from `MEASURED_KS_PASS`, else from the gitignored `android/measured.keystore.pass`, else generated on the first build and written there. The only key in the source is YouTube's *public* InnerTube web client key (`AIza…`), the same one youtube.com ships in its own JavaScript; it is not an account credential.
 - **Android never had the INTERNET permission until Nowhere existed** — it is declared now, for YouTube only. The local library still works with the network off.
 - **Signing**: the APK is signed with a private keystore that is not distributed. Publishing an update requires that key, which is what stops anyone else from shipping a look-alike build over yours.
 - Found a security problem? Open an issue with the `security` label; do not post exploit details for an unpatched build.

@@ -4,9 +4,24 @@ const fs = require('fs');
 const path = require('path');
 
 const repo = path.resolve(__dirname, '..');
-const out = path.resolve(__dirname, 'desktop', 'dist');
+// MEASURED_STAGE_OUT lets test/stage.test.cjs stage into a throwaway directory
+// instead of clobbering the real dist/ the desktop build reads.
+const out = process.env.MEASURED_STAGE_OUT
+  ? path.resolve(process.env.MEASURED_STAGE_OUT)
+  : path.resolve(__dirname, 'desktop', 'dist');
 
-const files = ['index.html', 'api.js', 'fingerprints.js', 'fingerprints.json', 'library.json', 'icon.png'];
+// embeddings.json is fetched by index.html at boot (loadEmbeddings); leaving it
+// out of the bundle made the recommender's embedding feature 404 silently in
+// every packaged desktop build.
+const files = [
+  'index.html',
+  'api.js',
+  'fingerprints.js',
+  'fingerprints.json',
+  'library.json',
+  'embeddings.json',
+  'icon.png',
+];
 const dirs = ['deck', 'styles', 'thumbs'];
 
 fs.rmSync(out, { recursive: true, force: true });
