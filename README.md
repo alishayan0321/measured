@@ -15,18 +15,22 @@ The Windows build is x64 only and needs the WebView2 runtime, which ships with W
 
 On Android, tap the APK, allow your browser or file manager to *install unknown apps* (the normal Android prompt for any app not from the Play Store), then install.
 
-## What's new in 2.0.3
+## What's new in 2.1.0
 
-- **Loudness normalisation.** Tracks are matched to -14 LUFS through a gain node after the analyser, so the spectrum meter keeps showing EQ shape while the level is levelled. Boosts stop at 1.25x and at -1 dBTP of the measured true peak, so a quiet-but-peaky master cannot be pushed into clipping. Press `b` to A/B against the raw level.
-- **Transport fixes.** The play position survives a relaunch, the dock speaker is a real mute (button, `m`, card — one owner, remembered), Previous restarts the current track past three seconds, and dragging the rail to the very end no longer leaves a stopped player with a pause icon.
-- **Everyone gets the styles.** `android/build.cjs` staged every web asset except `styles/`, so any APK built after the 2.0.2 CSS split would have installed an unstyled player. It is staged now.
-- Version strings bumped to 2.0.3. The executable reports `FileVersion 2.0.3`.
+- **Shuffle and repeat.** Off/all/one in the transport, `s` and `r` on the keyboard, remembered across relaunches. Shuffle is a queue rather than a coin flip: it draws from the view you are looking at, not the whole library, and it keeps the same 12-track repeat window the recommender uses, so turning shuffle on is not a way to hear the same song twice.
+- **Loudness is measured, not guessed.** `fp.rs` runs K-weighting, 400 ms blocks on a 100 ms hop, a -70 LUFS absolute gate and a -10 LU relative gate, with true peak 4x oversampled. A -23 LUFS synthetic tone reads -23 within the ±0.5 LU the tests assert, at both 44.1 and 48 kHz. Long tracks are read in head, middle and tail windows instead of being decoded end to end.
+- **One filename parser.** `lib/parse-name.js` and `rust/core/src/scan.rs` run the same 30-case fixture (`test/parse-vectors.json`), so a name parses identically in the browser and in the Rust core. Promo words match whole tokens, so Clean Bandit and Video Games survive.
+- **The stage script moved out of the page.** `app.js` holds it now — the same text that used to sit inline, line endings aside — which let the CSP drop `'unsafe-inline'` from `script-src`. The only script origins allowed are `'self'` and `https://www.youtube.com`, for the IFrame API.
+- **Long jobs left the UI thread.** Library scans, conversion, fingerprinting and yt-dlp all run off the main thread. yt-dlp is killed at 120 s for a resolve and 900 s for a download, because a download is minutes of transfer, not a lookup.
+- **Caches key on content, not names.** The transcode cache keys on (name, mtime, size) and the duration cache on the same triple, so replacing a file with a different one re-converts it, and reloading an unchanged library decodes nothing.
+- **Android fixes.** The bridge's `prepare` is token-async like the YouTube calls, downloads write `<name>.part` and rename on success, playback pauses when another app takes audio focus or headphones are unplugged, and the foreground service always posts a notification before it parses its payload.
+- Version strings bumped to 2.1.0. The executable reports `FileVersion 2.1.0`.
 
-Full history: [2.0.2](docs/releases/RELEASE-2.0.2.md) · [2.0.1](docs/releases/RELEASE-2.0.1.md) · [2.0.0](docs/releases/RELEASE-2.0.0.md).
+Full history: [2.0.3](docs/releases/RELEASE-2.0.3.md) · [2.0.2](docs/releases/RELEASE-2.0.2.md) · [2.0.1](docs/releases/RELEASE-2.0.1.md) · [2.0.0](docs/releases/RELEASE-2.0.0.md).
 
 ## The 2.0 feature set
 
-- **Rust core** (`rust/core`): decoding through [symphonia], tagging through [lofty], spectral fingerprints through [rustfft], cover thumbnails through [image]. One library, shared by the desktop shell and (via the same algorithms) the Android build.
+- **Rust core** (`rust/core`): decoding through [symphonia], filename parsing shared with the web build, spectral fingerprints through [rustfft], cover thumbnails through [image]. One library, shared by the desktop shell and (via the same algorithms) the Android build.
 - **Tauri 2 desktop shell** (`rust/desktop`): ~200 ms to a painted window, ~60 MB resident with 148 tracks loaded. The old Electron shell was 886 MB on disk and 1.5–3 s to first paint.
 - **No local HTTP server on desktop.** Audio is served through Tauri's asset protocol, which handles Range requests natively, so seeking is instant without a process sitting on a port.
 - **Nowhere** — an in-app YouTube surface: audio-first playback (webm/opus, low data), an optional video mode that swaps the platter for a player and stretches the layout, recent searches and history stored locally.
@@ -41,14 +45,15 @@ Full history: [2.0.2](docs/releases/RELEASE-2.0.2.md) · [2.0.1](docs/releases/R
 | --- | --- | --- |
 | Web | `node server.cjs` → <http://127.0.0.1:8142/> | Range requests; the page is served straight off disk |
 | Windows | Tauri 2 + Rust core | Bundled songs, native "Add songs" dialog, asset-protocol audio |
-| Android | WebView over `file:///android_asset` (min SDK 26) | Bundled songs, system file picker, media notification, on-device streaming |
+| Android | WebView over `file:///android_asset` (min SDK 24) | Bundled songs, system file picker, media notification, on-device streaming |
 
-The interface is one page in all three. `index.html` carries the markup and the stage script; `styles/base.css` and `styles/app.css` carry the presentation, split out of the single file they used to live in. `api.js` is the single bridge: on the web it fetches `/api/tracks`, on desktop it `invoke`s Rust commands, on Android it calls `AndroidBridge` through `@JavascriptInterface`.
+The interface is one page in all three. `index.html` carries the markup and `app.js` the stage script; `styles/base.css` and `styles/app.css` carry the presentation, split out of the single file they used to live in. `api.js` is the single bridge: on the web it fetches `/api/tracks`, on desktop it `invoke`s Rust commands, on Android it calls `AndroidBridge` through `@JavascriptInterface`.
 
 ## Architecture
 
 ```
-index.html              the player: markup and stage script
+index.html              the player: markup
+app.js                  the stage script: deck, transport, Nowhere, shuffle/repeat
 styles/base.css         reset, tokens, type scale
 styles/app.css          the player chrome, deck and transport
 api.js                  one bridge for web / Tauri / Android
@@ -57,7 +62,7 @@ lib/server.cjs          http server with Range support (web shell)
 fingerprints.js|json    measured loudness / true peak / crest / bands per track
 library.json            Android asset manifest (id-named files)
 thumbs/                 cover art, one jpg per track
-rust/core/              decode (symphonia), tags (lofty), fingerprints (rustfft), thumbs (image)
+rust/core/              decode (symphonia), name parsing, fingerprints (rustfft), thumbs (image)
 rust/desktop/           Tauri 2 shell: commands, asset protocol, Nowhere, likes
 android/                WebView shell, JNI bridge, NewPipeExtractor wrapper, Gradle-free build.cjs
 ```
@@ -75,9 +80,9 @@ Loudness follows BS.1770's shape — K-weighting, 400 ms blocks on a 100 ms hop,
 
 ### Desktop commands (Tauri IPC)
 
-`library`, `is_native`, `prepare`, `fingerprint`, `storage`, `pick_songs`, `remove_added`, `clear_added`, `get`, `set`, `set_theme`, `version`, `platform`, `yt_search`, `yt_audio`, `yt_download`.
+`library`, `is_native`, `prepare`, `fingerprint`, `storage`, `pick_songs`, `remove_added`, `clear_added`, `shelf_search`, `get`, `set`, `set_theme`, `version`, `platform`, `proxy_base`, `smtc_update`, `smtc_clear`, `yt_search`, `yt_resolve`, `yt_audio`, `yt_download`.
 
-`prepare` is the converter: a format symphonia can read but WebView2 cannot (AIFF, CAF, ALAC, …) is decoded once into `<cache>/transcode/<md5>.wav` and handed to the audio element as a local asset URL.
+`prepare` is the converter: a format symphonia can read but WebView2 cannot (AIFF, CAF, ALAC, …) is decoded once into `<cache>/transcode/<key>.wav` and handed to the audio element as a local asset URL. `<key>` is the first 16 hex characters of the md5 over the file name, its mtime and its byte size, so replacing a file with a different one converts it again instead of serving the old audio.
 
 ## Formats
 
@@ -104,9 +109,29 @@ node build.cjs            # full build with songs
 node build.cjs --fast     # code-only build, skips the 465 MB of audio
 ```
 
-`rust/stage-ui.cjs` assembles the web assets into `rust/desktop/dist` before the desktop build; it stages `index.html`, `api.js`, `lib/`, `deck/`, `styles/`, `thumbs/`, the fingerprint and embedding data and `icon.png`.
+`rust/stage-ui.cjs` assembles the web assets into `rust/desktop/dist` before the desktop build; it stages `index.html`, `app.js`, `api.js`, `fingerprints.js`, `fingerprints.json`, `library.json`, `embeddings.json`, `icon.png` and the `deck/`, `styles/` and `thumbs/` directories. `test/stage.test.cjs` runs it and `android/build.cjs --stage-only` into temp directories and fails if any file the page references is missing from either output.
 
 `android/build.cjs` is deliberately Gradle-free: `aapt2 compile/link`, `javac`, `d8`, a zip append for `classes.dex`, `zipalign`, `apksigner`. It resolves the toolchain through `build/` in this workspace; set `MEASURED_BUILD` to relocate both roots at once, or `MEASURED_ANDROID_SDK` / `MEASURED_JAVA_HOME` to point at an SDK and JDK you already have. `node build.cjs --stage-only` stages the web assets and stops, which is what `test/stage.test.cjs` uses.
+
+## Tests
+
+```bash
+node test/recommend.test.cjs   # 42  ranker, bootstrap, migration
+node test/parse.test.cjs       # 33  the shared filename fixture
+node test/shelf.test.cjs       # 13  shelf search and scoring
+node test/embed.test.cjs       #  7  embedding features
+node test/wire.test.cjs        #  7  the online-learning wire format
+node test/stage.test.cjs       #  5  both staging scripts produce a complete bundle
+node test/repeat.test.cjs      #  3  the repeat window
+node test/csp.check.cjs        #     headless Chromium: CSP positive + negative control
+cd rust && cargo test --workspace   # 12  9 core, 3 desktop
+```
+
+`test/csp.check.cjs` is the one that needs explaining. It serves `rust/desktop/dist` with the exact CSP from `tauri.conf.json` as a response header, loads it in headless Chromium, and asserts there are no `securitypolicyviolation` events, that the YouTube IFrame API loads, and that ten real clicks (mute, shuffle, repeat, play, next, prev, settings, theme, close, library) each reach a handler and change state. Then it runs the same page again with `https://www.youtube.com` removed from `script-src` and requires that pass to *fail* — one `script-src-elem` violation and a blocked loader. A check that cannot fail is not a check.
+
+`test/stage.test.cjs` parses `index.html` for every local `src`, `href` and `fetch()` target, runs `rust/stage-ui.cjs` and `android/build.cjs --stage-only` into temp directories, and fails if any referenced file is missing from either output. That is the test that would have caught `embeddings.json` 404ing in both packaged builds.
+
+CI runs all of it on every push, plus `cargo fmt --all --check` and `cargo clippy --workspace -- -D warnings`.
 
 ## Privacy and security
 
@@ -134,6 +159,5 @@ Binaries are attached to the [releases](../../releases) instead.
 MIT for the code. The bundled music, cover art and fingerprints are personal media and are not covered by that licence.
 
 [symphonia]: https://github.com/pdeljanov/Symphonia
-[lofty]: https://github.com/Serial-ATA/lofty-rs
 [rustfft]: https://github.com/ejmahler/RustFFT
 [image]: https://github.com/image-rs/image
