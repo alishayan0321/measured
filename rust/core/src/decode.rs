@@ -12,10 +12,11 @@ use anyhow::{anyhow, Context, Result};
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::DecoderOptions;
 use symphonia::core::errors::Error as SymError;
-use symphonia::core::formats::FormatOptions;
+use symphonia::core::formats::{FormatOptions, SeekMode, SeekTo};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
+use symphonia::core::units::Time;
 
 #[derive(Debug)]
 pub struct Pcm {
@@ -120,6 +121,99 @@ pub fn decode_file(path: &Path) -> Result<Pcm> {
         }
     }
 
+    if samples.is_empty() {
+        return Err(anyhow!("no audio decoded from {}", path.display()));
+    }
+    Ok(Pcm {
+        rate,
+        channels,
+        samples,
+    })
+}
+
+/// Decode at most `max_secs` of audio starting at `start_secs`.
+///
+/// Fingerprinting needs a few windows, not the whole track: a two-hour mix is
+/// over a gigabyte of f32 samples and minutes of decode. Seeking is best-effort
+/// — a container that cannot seek falls back to decoding from the start and
+/// dropping the leading samples, which is slower but still correct.
+pub fn decode_window(path: &Path, start_secs: f64, max_secs: f64) -> Result<Pcm> {
+    let (mut reader, track_id) = open_track(path)?;
+    let params = reader
+        .tracks()
+        .iter()
+        .find(|t| t.id == track_id)
+        .map(|t| t.codec_params.clone())
+        .ok_or_else(|| anyhow!("missing track {track_id}"))?;
+    let mut decoder = symphonia::default::get_codecs()
+        .make(&params, &DecoderOptions::default())
+        .context("create decoder")?;
+
+    let mut rate = params.sample_rate.unwrap_or(44_100);
+    let mut channels = params.channels.map(|c| c.count()).unwrap_or(2).max(1);
+
+    let mut skip = 0usize;
+    if start_secs > 0.0 {
+        let secs = start_secs.max(0.0);
+        let to = SeekTo::Time {
+            time: Time {
+                seconds: secs as u64,
+                frac: secs.fract(),
+            },
+            track_id: Some(track_id),
+        };
+        if reader.seek(SeekMode::Accurate, to).is_err() {
+            skip = (secs * rate as f64) as usize * channels;
+        }
+    }
+
+    let mut samples: Vec<f32> = Vec::new();
+    let mut sample_buf: Option<SampleBuffer<f32>> = None;
+
+    loop {
+        // Recomputed each pass because the first decoded packet is what reveals
+        // the real rate and channel count.
+        let want = (max_secs * rate as f64) as usize * channels;
+        if samples.len() >= want {
+            break;
+        }
+        let packet = match reader.next_packet() {
+            Ok(p) => p,
+            Err(SymError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+            Err(SymError::ResetRequired) => break,
+            Err(e) => return Err(anyhow!("read packet: {e}")),
+        };
+        if packet.track_id() != track_id {
+            continue;
+        }
+        match decoder.decode(&packet) {
+            Ok(decoded) => {
+                let spec = *decoded.spec();
+                rate = spec.rate;
+                channels = spec.channels.count().max(1);
+                if sample_buf.is_none()
+                    || sample_buf.as_ref().map(|b| b.capacity()) < Some(decoded.capacity())
+                {
+                    sample_buf = Some(SampleBuffer::<f32>::new(decoded.capacity() as u64, spec));
+                }
+                if let Some(buf) = sample_buf.as_mut() {
+                    buf.copy_interleaved_ref(decoded);
+                    samples.extend_from_slice(buf.samples());
+                }
+            }
+            Err(SymError::DecodeError(_)) => continue,
+            Err(SymError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+            Err(e) => return Err(anyhow!("decode: {e}")),
+        }
+    }
+
+    if skip > 0 && skip < samples.len() {
+        samples.drain(..skip);
+    }
+    let want = (max_secs * rate as f64) as usize * channels;
+    if samples.len() > want {
+        samples.truncate(want);
+    }
     if samples.is_empty() {
         return Err(anyhow!("no audio decoded from {}", path.display()));
     }
