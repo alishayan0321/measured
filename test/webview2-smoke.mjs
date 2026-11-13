@@ -23,13 +23,22 @@
  *   - any console line matching /not allowed by ACL|Uncaught/ fails the run;
  *   - a click step that throws or whose assertion fails fails the run;
  *   - the library must paint at least one row;
- *   - a BLOCKED step fails the run unless it is the native file picker, which
- *     lives outside the page and is the one surface CDP cannot observe.
+ *   - a BLOCKED step fails the run, with one exception: the native file picker
+ *     is BLOCKED by design. It is an OS-level modal dialog, the one surface CDP
+ *     can neither observe nor dismiss, and a renderer waiting on it stops
+ *     answering Runtime.evaluate — so a read that times out after the click is
+ *     the expected evidence that the dialog is up, not a failure.
  * A step that cannot run because the environment lacks something (network, a
  * playable track) is still reported as BLOCKED with the observed reason — but
  * it fails the verdict instead of quietly shrinking the surface, so a broken
  * environment cannot come out green. This file never pretends to have tested
  * what it did not.
+ *
+ * Because the picker blocks the page, the page collectors are snapshotted
+ * BEFORE the picker is clicked and the verdict is computed from that snapshot.
+ * No unguarded CDP call may run after #act-add, and the picker step is last for
+ * that same reason: reading the collectors afterwards is what once turned a
+ * blocked picker into a harness error (exit 2).
  *
  * Exit codes: 0 pass, 1 fail, 2 harness error (could not attach, exe missing).
  *
@@ -97,6 +106,16 @@ if (expectRejections !== null && !/^\d+$/.test(String(expectRejections))) {
 }
 const STEP_TIMEOUT = Number(arg('step-timeout', 40000));
 const BOOT_TIMEOUT = Number(arg('boot-timeout', 40000));
+// Once #act-add is clicked the renderer stops answering for as long as the
+// modal picker is up, so every read from that point on must be short: a wedged
+// page should cost a few seconds and a BLOCKED step, never a 15 s default
+// evaluate timeout and a harness error. The settle window gives the OS dialog
+// time to appear before the probe read runs.
+const PICKER_SETTLE_MS = 2500;
+const PICKER_READ_TIMEOUT = 4000;
+// The verdict's input is read before the picker, where the page still answers;
+// the same short budget applies so a slow page cannot look like a dead one.
+const SNAPSHOT_TIMEOUT = 4000;
 
 let exeStat;
 try {
@@ -694,41 +713,92 @@ async function main() {
       return { ok: true, detail: `mute toggled (${muted} → ${s.muted}), next → t=${s.t.toFixed(2)} (was paused=${before})` };
     });
 
+    // ---------------------------------------------------------- collectors
+
+    // The page collectors are the verdict's input and they must be read while
+    // the page still answers. Clicking #act-add raises the native picker, and a
+    // modal OS dialog stops the renderer's event loop: Runtime.evaluate never
+    // returns. Reading them afterwards is what turned an earlier run into a
+    // harness error (exit 2, "Runtime.evaluate: timed out") instead of the
+    // blocked picker it really was. Snapshot once, short timeout, and take the
+    // verdict from this snapshot.
+    const snapshot = { rejections: [], errors: [], console: [] };
+    try {
+      Object.assign(snapshot, await page.evaluate(`(() => {
+        const S = window.__smoke || {};
+        return { rejections: (S.rejections || []).slice(), errors: (S.errors || []).slice(), console: (S.console || []).slice() };
+      })()`, SNAPSHOT_TIMEOUT));
+    } catch (e) {
+      // An unreadable collector set cannot be assumed clean — that is exactly
+      // the false green this harness exists to prevent — so it is a FAIL, and
+      // the verdict then cannot pass on empty lists either.
+      results.push({ name: 'collectors read before the picker', status: 'FAIL', detail: e.message, ms: 0 });
+      line('FAIL', 'collectors read before the picker', e.message);
+    }
+    // The ACL denial this harness has actually seen (plugin:event|listen)
+    // arrives at boot, and any other page-side denial lands in one of these
+    // lists too; counting them here is what lets the blocked detail below say
+    // the denial was absent rather than merely unobserved.
+    const denialCount = [...snapshot.rejections, ...snapshot.errors, ...snapshot.console]
+      .filter((s) => /not allowed by ACL|denied/i.test(String(s))).length;
+    console.log('');
+    console.log(`snapshot   ${snapshot.rejections.length} rejection(s), ${snapshot.errors.length} error(s), ` +
+      `${snapshot.console.length} console line(s), ${denialCount} matching /not allowed by ACL|denied/ — read before the picker`);
+    console.log('');
+
     // Last: this opens a native OS file dialog on the Rust side. Nothing in the
-    // page can close it, so it runs after every other assertion and the process
-    // is killed at the end.
+    // page can close it, so it runs after every other assertion AND after the
+    // collectors snapshot; no unguarded CDP call may follow the click.
     await step('add songs invokes the native picker', async () => {
       await page.click('#gear');
       await sleep(300);
       await page.evaluate(`(() => { document.getElementById('act-note').textContent = ''; return true; })()`);
       const t0 = Date.now();
       await page.click('#act-add');
-      // app.js only writes #act-note AFTER `await PlayerAPI.pickSongs()` returns,
-      // so an empty note is exactly what an open modal OS picker looks like. The
-      // dialog lives outside the page, so CDP can neither see nor dismiss it.
-      await sleep(4000);
-      const note = await page.evaluate(`(document.getElementById('act-note') || {}).textContent || ''`);
+      // app.js writes #act-note only AFTER `await PlayerAPI.pickSongs()` returns,
+      // and a modal OS dialog stops the renderer before it can get there. So one
+      // short read is the probe: it answers → no dialog is up; it does not answer
+      // → the dialog is up, which is BLOCKED (CDP cannot observe or dismiss an OS
+      // modal), unless the process died, which is a real failure.
+      await sleep(PICKER_SETTLE_MS);
+      // Sampled where it is used, not once up front: a crash during the probe
+      // read would otherwise be misreported as a dialog that is just being modal.
+      const gone = () => (exited
+        ? `the process exited (${exited.code === null ? 'signal ' + (exited.signal || 'unknown') : 'code ' + exited.code}) after the click`
+        : '');
+      let note;
+      try {
+        note = await page.evaluate(`(document.getElementById('act-note') || {}).textContent || ''`, PICKER_READ_TIMEOUT);
+      } catch (e) {
+        if (gone()) return { ok: false, detail: `#act-add clicked and ${gone()}; the read that failed was #act-note (${e.message})` };
+        return {
+          blocked:
+            `#act-add clicked; the page stopped answering (#act-note unreadable ${Date.now() - t0} ms after the click: ${e.message}). ` +
+            'That is what a modal native file dialog looks like — it runs on the OS side, so CDP can neither see nor dismiss it. ' +
+            `The snapshot read before the click holds ${denialCount} matching /not allowed by ACL|denied/ line(s), ` +
+            'and the verdict is computed from that snapshot, so a denied command cannot hide behind this step.',
+        };
+      }
       if (/Pick audio files/.test(note)) return { ok: true, detail: `note after ${Date.now() - t0} ms: ${note}` };
       if (/Could not open|No file picker|denied/i.test(note)) return { ok: false, detail: `note: ${note}` };
+      if (gone()) return { ok: false, detail: `#act-add clicked, #act-note still empty, and ${gone()}` };
       return {
         blocked:
-          '#act-add clicked, no #act-note after 4 s (it is written only once pickSongs resolves); ' +
-          'the modal OS picker cannot be observed or dismissed over CDP. A denied command would log ' +
-          '"not allowed by ACL" and the verdict asserts there are none.',
+          `#act-add clicked, the page still answers but #act-note is empty after ${PICKER_SETTLE_MS} ms ` +
+          '(it is written only once pickSongs resolves), so the picker surface was not exercised. ' +
+          `No denial in the pre-click snapshot (${denialCount} matching line(s)).`,
       };
     });
 
     // ------------------------------------------------------------- verdict
-
-    const finalRejections = await page.evaluate('window.__smoke.rejections.slice()');
-    const finalErrors = await page.evaluate('window.__smoke.errors.slice()');
-    const finalConsole = await page.evaluate('window.__smoke.console.slice()');
-    // finalRejections is the cumulative list for the reloaded document, so it
-    // already contains the boot snapshot. Do not dedupe: the count IS the
+    // Computed from the pre-picker snapshot only: the modal dialog may still be
+    // holding the renderer, so nothing below may call into the page.
+    // The snapshot is cumulative for the reloaded document, so it already
+    // contains the boot state. Do not dedupe rejections: the count IS the
     // assertion, and the known defect is two events with an identical message.
-    const rejections = [...finalRejections];
-    const errors = dedupe([...pageErrors, ...finalErrors]);
-    const aclLines = dedupe([...consoleLines, ...finalConsole]).filter((l) => /not allowed by ACL|Uncaught/i.test(l));
+    const rejections = [...snapshot.rejections];
+    const errors = dedupe([...pageErrors, ...snapshot.errors]);
+    const aclLines = dedupe([...consoleLines, ...snapshot.console]).filter((l) => /not allowed by ACL|Uncaught/i.test(l));
 
     // Exit info, if the window died on its own (a panic is a failure too).
     await sleep(300);
