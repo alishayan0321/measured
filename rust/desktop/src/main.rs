@@ -591,11 +591,16 @@ fn get(key: String, fallback: Option<serde_json::Value>) -> serde_json::Value {
 }
 
 #[tauri::command]
-fn set(app: AppHandle, key: String, value: serde_json::Value) {
+async fn set(app: AppHandle, key: String, value: serde_json::Value) {
     if let Ok(mut s) = store().lock() {
         s.insert(key, value);
     }
-    save_settings(&app);
+    // The save serializes, fsyncs and renames the whole store, and the page fires
+    // `set` on pointermove while the volume is dragged; doing that much disk work on
+    // the thread the UI waits on would stall it. The insert above already happened
+    // under the store lock, so the snapshot this task writes includes it, and two
+    // saves still publish whole snapshots in lock order.
+    let _ = tauri::async_runtime::spawn_blocking(move || save_settings(&app)).await;
 }
 
 #[tauri::command]
