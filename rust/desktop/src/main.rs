@@ -778,12 +778,12 @@ mod tests {
         assert_eq!(dir.join(&name).parent(), Some(dir));
     }
 
-    // A crash between `File::create` and the last byte of a plain write leaves an
-    // unparsable settings.json, and the next launch would then read the user's
-    // library as empty. Saving through a temp file plus a rename must mean the
-    // live file only ever changes as a whole.
+    // The cheap half of the atomic-save contract: a completed save leaves the whole
+    // bytes in place and no temp file behind, and a temp file left by a writer that
+    // died before its rename is never read as settings. That a reader cannot catch
+    // a half-written settings.json is the concurrent test's job, not this one's.
     #[test]
-    fn saving_never_publishes_a_partial_settings_file() {
+    fn save_leaves_no_temp_file_and_ignores_a_stale_one() {
         let dir = scratch_dir("atomic");
         let path = dir.join("settings.json");
         write_atomic(&path, br#"{"volume":1}"#).expect("first save");
