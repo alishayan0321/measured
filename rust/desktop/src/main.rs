@@ -694,8 +694,24 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::safe_name;
-    use std::path::Path;
+    use super::{load_settings_from, safe_name, save_store_to, write_atomic, Store};
+    use std::collections::HashMap;
+    use std::path::{Path, PathBuf};
+    use std::sync::Mutex;
+
+    /// A directory of its own per test: the settings tests run in parallel and
+    /// must never share a settings file with one another.
+    fn scratch_dir(tag: &str) -> PathBuf {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static NEXT: AtomicU32 = AtomicU32::new(0);
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "measured-settings-{}-{tag}-{n}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+        dir
+    }
 
     // `prepare` and `remove_added` join this onto a library directory. Every
     // rejected case here would otherwise escape that directory.
@@ -731,5 +747,139 @@ mod tests {
         let dir = Path::new(r"C:\music\added");
         let name = safe_name("track 01.mp3").expect("plain name");
         assert_eq!(dir.join(&name).parent(), Some(dir));
+    }
+
+    // A crash between `File::create` and the last byte of a plain write leaves an
+    // unparsable settings.json, and the next launch would then read the user's
+    // library as empty. Saving through a temp file plus a rename must mean the
+    // live file only ever changes as a whole.
+    #[test]
+    fn saving_never_publishes_a_partial_settings_file() {
+        let dir = scratch_dir("atomic");
+        let path = dir.join("settings.json");
+        write_atomic(&path, br#"{"volume":1}"#).expect("first save");
+        write_atomic(&path, br#"{"volume":2}"#).expect("second save");
+        assert_eq!(&std::fs::read(&path).unwrap()[..], b"{\"volume\":2}");
+        // The temp name is an implementation detail, not another settings file
+        // for a user to trip over.
+        assert!(!dir.join("settings.json.tmp").exists(), "save left a temp");
+
+        // Exactly the shape a writer killed before its rename leaves behind: the
+        // partial bytes sit in the temp file and never reach the live one.
+        std::fs::write(dir.join("settings.json.tmp"), b"{\"volume\":").unwrap();
+        let store: Store = Mutex::new(HashMap::new());
+        load_settings_from(&path, &store);
+        assert_eq!(
+            store.lock().unwrap().get("volume"),
+            Some(&serde_json::json!(2)),
+            "a stale temp file must not be read as settings"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // Whatever left the file short (an older build crashing mid-write, a disk
+    // error, a hand edit), the state the app already holds must survive the load
+    // instead of being replaced by an empty store and then saved over.
+    #[test]
+    fn truncated_settings_file_does_not_reset_the_running_state() {
+        let dir = scratch_dir("truncated");
+        let path = dir.join("settings.json");
+        let broken: &[u8] = br#"{"library":["keep.mp3"],"volume":"#;
+        std::fs::write(&path, broken).unwrap();
+
+        let store: Store = Mutex::new(HashMap::new());
+        store
+            .lock()
+            .unwrap()
+            .insert("library".into(), serde_json::json!(["keep.mp3"]));
+        load_settings_from(&path, &store);
+        assert_eq!(
+            store.lock().unwrap().get("library"),
+            Some(&serde_json::json!(["keep.mp3"])),
+            "a truncated file must not empty the store"
+        );
+        // Loading is read-only: the unparsable bytes stay on disk for the user to
+        // inspect rather than being erased by the next save.
+        assert_eq!(&std::fs::read(&path).unwrap()[..], broken);
+
+        // An instance that had nothing loaded yet stays empty instead of picking
+        // up garbage from the half-written file.
+        let empty: Store = Mutex::new(HashMap::new());
+        load_settings_from(&path, &empty);
+        assert!(empty.lock().unwrap().is_empty());
+
+        // And the state that survived can still be persisted again in full.
+        save_store_to(&path, &store);
+        let saved: HashMap<String, serde_json::Value> =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(saved.get("library"), Some(&serde_json::json!(["keep.mp3"])));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // Two windows' worth of `set` calls can interleave: each inserts under the
+    // store lock and then saves. Neither key may be dropped, and a reader must
+    // never observe a settings file that stops in the middle of the JSON.
+    #[test]
+    fn concurrent_saves_lose_no_key_and_show_no_partial_file() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let dir = scratch_dir("race");
+        let path = dir.join("settings.json");
+        write_atomic(&path, br#"{"seed":true}"#).unwrap();
+
+        let store: Store = Mutex::new(HashMap::new());
+        let stop = AtomicBool::new(false);
+        let mut reads = 0u32;
+
+        std::thread::scope(|scope| {
+            let reader = {
+                let path = &path;
+                let stop = &stop;
+                scope.spawn(move || {
+                    let mut seen = 0u32;
+                    // Bounded so a panicking writer cannot leave this thread
+                    // waiting on a flag that is never set.
+                    while !stop.load(Ordering::Relaxed) && seen < 2000 {
+                        let text =
+                            std::fs::read_to_string(path).expect("settings file stays readable");
+                        serde_json::from_str::<serde_json::Value>(&text).unwrap_or_else(|err| {
+                            panic!("read #{seen} caught a partial file ({err}): {text:?}")
+                        });
+                        seen += 1;
+                    }
+                    seen
+                })
+            };
+
+            let mut writers = Vec::new();
+            for key in ["library", "volume"] {
+                let path = &path;
+                let store = &store;
+                writers.push(scope.spawn(move || {
+                    for _ in 0..25 {
+                        // The order `set` uses: insert under the lock, then save.
+                        if let Ok(mut s) = store.lock() {
+                            s.insert(key.to_string(), serde_json::json!({ "set_by": key }));
+                        }
+                        save_store_to(path, store);
+                    }
+                }));
+            }
+            for writer in writers {
+                writer.join().expect("writer thread");
+            }
+            stop.store(true, Ordering::Relaxed);
+            reads = reader.join().expect("reader thread");
+        });
+
+        assert!(reads > 0, "the reader never completed a read");
+        let text = std::fs::read_to_string(&path).unwrap();
+        let saved: HashMap<String, serde_json::Value> = serde_json::from_str(&text).unwrap();
+        assert!(saved.contains_key("library"), "lost a key: {text}");
+        assert!(saved.contains_key("volume"), "lost a key: {text}");
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
