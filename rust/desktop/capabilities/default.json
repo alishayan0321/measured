@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The main window listens for the SMTC bridge events that media.rs emits (track changes and seek requests from the OS media session). Listening is the only core capability the page needs: every other shell call goes through app commands declared in invoke_handler, which are not ACL-gated.",
+  "windows": ["main"],
+  "permissions": ["core:event:allow-listen"]
+}
