@@ -483,21 +483,73 @@ fn store() -> &'static Store {
 }
 
 fn load_settings(app: &AppHandle) {
-    if let Ok(text) = std::fs::read_to_string(settings_path(app)) {
-        if let Ok(map) = serde_json::from_str::<HashMap<String, serde_json::Value>>(&text) {
-            if let Ok(mut s) = store().lock() {
-                *s = map;
-            }
-        }
+    load_settings_from(&settings_path(app), store());
+}
+
+/// Replaces the store only with a file that parsed in full.
+///
+/// A truncated `settings.json` is not an empty store: it is what a crash during a
+/// non-atomic write, a disk error or a hand edit leaves behind, and reading it as
+/// empty is how a library the app already holds gets silently reset and then
+/// saved over. On a parse failure the running state is left exactly as it is.
+fn load_settings_from(path: &Path, store: &Store) {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return;
+    };
+    let Ok(map) = serde_json::from_str::<HashMap<String, serde_json::Value>>(&text) else {
+        return;
+    };
+    if let Ok(mut s) = store.lock() {
+        *s = map;
     }
 }
 
 fn save_settings(app: &AppHandle) {
-    if let Ok(s) = store().lock() {
-        if let Ok(text) = serde_json::to_string_pretty(&*s) {
-            std::fs::write(settings_path(app), text).ok();
-        }
+    save_store_to(&settings_path(app), store());
+}
+
+/// Writes the whole store to `path` without ever exposing a half-written file.
+///
+/// The snapshot is taken and written while the store lock is held. `set` inserts
+/// under that same lock before it saves, so two saves racing each other publish
+/// complete snapshots in lock order; a stale snapshot can never land last and
+/// drop the other writer's key.
+fn save_store_to(path: &Path, store: &Store) {
+    let Ok(s) = store.lock() else {
+        return;
+    };
+    let Ok(text) = serde_json::to_string_pretty(&*s) else {
+        return;
+    };
+    write_atomic(path, text.as_bytes()).ok();
+}
+
+/// Replaces `path` with `bytes` via a sibling temp file and a rename.
+///
+/// `File::create` on the target truncates it before the first byte is written, so
+/// a crash inside that window leaves an unparsable file. Here the rename is the
+/// only step that changes `path`, so an interrupted write keeps the old content.
+fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let tmp = path.with_file_name(format!("{name}.tmp"));
+    {
+        let mut file = std::fs::File::create(&tmp)?;
+        file.write_all(bytes)?;
+        // A rename can be durable while the bytes it points at are not, so the
+        // temp file has to reach the disk before it is allowed to become the
+        // settings file.
+        file.sync_all()?;
     }
+    if let Err(err) = std::fs::rename(&tmp, path) {
+        std::fs::remove_file(&tmp).ok();
+        return Err(err);
+    }
+    Ok(())
 }
 
 #[tauri::command]
