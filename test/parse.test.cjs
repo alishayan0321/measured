@@ -32,6 +32,13 @@ t('video id survives keyFor', () => {
   assert.strictEqual(P.keyFor('Tycho - Awake.mp3', null), null);
 });
 
+t('promo tokens match whole words only', () => {
+  // "audio" is a promo token; "Audio Bullys" is a band. A substring test here
+  // would delete the artist, so tokens are compared whole (see parse-vectors).
+  assert.strictEqual(P.looksPromo('Audio Bullys'), false);
+  assert.strictEqual(P.looksPromo('Official Audio'), true);
+});
+
 t('extensions are classified', () => {
   assert.ok(P.isAudio('x.aiff'));
   assert.ok(!P.isNative('x.aiff'), 'aiff needs conversion, so it is not native');
