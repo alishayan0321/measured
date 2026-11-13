@@ -8,7 +8,7 @@ Everything is on the [Releases](../../releases/latest) page.
 
 | File | What it is |
 |---|---|
-| `MEASURED.exe` | **Windows 10/11 x64, 27.6 MiB** — the one to take. Portable: no installer, no admin rights. Put it in a folder with a `songs\` directory beside it, or point it at a folder from Settings → Add songs. |
+| `MEASURED.exe` | **Windows 10/11 x64, 28.6 MiB** — the one to take. Portable: no installer, no admin rights. Put it in a folder with a `songs\` directory beside it, or point it at a folder from Settings → Add songs. |
 | `MEASURED.apk` | Android 7.0+ (API 24), 483 MB — all 148 songs already inside. |
 
 The Windows build is x64 only and needs the WebView2 runtime, which ships with Windows 11 and current Windows 10. Your saved songs, likes and settings live in `%APPDATA%\com.measured.player`, so replacing the executable keeps them.
@@ -19,7 +19,7 @@ On Android, tap the APK, allow your browser or file manager to *install unknown 
 
 - **Shuffle and repeat.** Off/all/one in the transport, `s` and `r` on the keyboard, remembered across relaunches. Shuffle is a queue rather than a coin flip: it draws from the view you are looking at, not the whole library, and it keeps the same 12-track repeat window the recommender uses, so turning shuffle on is not a way to hear the same song twice.
 - **Loudness is measured, not guessed.** `fp.rs` runs K-weighting, 400 ms blocks on a 100 ms hop, a -70 LUFS absolute gate and a -10 LU relative gate, with true peak 4x oversampled. A -23 LUFS synthetic tone reads -23 within the ±0.5 LU the tests assert, at both 44.1 and 48 kHz. Long tracks are read in head, middle and tail windows instead of being decoded end to end.
-- **One filename parser.** `lib/parse-name.js` and `rust/core/src/scan.rs` run the same 30-case fixture (`test/parse-vectors.json`), so a name parses identically in the browser and in the Rust core. Promo words match whole tokens, so Clean Bandit and Video Games survive.
+- **One filename parser.** `lib/parse-name.js` and `rust/core/src/scan.rs` run the same 33-case fixture (`test/parse-vectors.json`), so a name parses identically in the browser and in the Rust core. Promo words match whole tokens, so Clean Bandit and Video Games survive.
 - **The stage script moved out of the page.** `app.js` holds it now — the same text that used to sit inline, line endings aside — which let the CSP drop `'unsafe-inline'` from `script-src`. The only script origins allowed are `'self'` and `https://www.youtube.com`, for the IFrame API.
 - **Long jobs left the UI thread.** Library scans, conversion, fingerprinting and yt-dlp all run off the main thread. yt-dlp is killed at 120 s for a resolve and 900 s for a download, because a download is minutes of transfer, not a lookup.
 - **Caches key on content, not names.** The transcode cache keys on (name, mtime, size) and the duration cache on the same triple, so replacing a file with a different one re-converts it, and reloading an unchanged library decodes nothing.
@@ -124,7 +124,7 @@ node test/wire.test.cjs        #  7  the online-learning wire format
 node test/stage.test.cjs       #  5  both staging scripts produce a complete bundle
 node test/repeat.test.cjs      #  3  the repeat window
 node test/csp.check.cjs        #     headless Chromium: CSP positive + negative control
-cd rust && cargo test --workspace   # 12  9 core, 3 desktop
+cd rust && cargo test --workspace   # 18  15 core, 3 desktop
 ```
 
 `test/csp.check.cjs` is the one that needs explaining. It serves `rust/desktop/dist` with the exact CSP from `tauri.conf.json` as a response header, loads it in headless Chromium, and asserts there are no `securitypolicyviolation` events, that the YouTube IFrame API loads, and that ten real clicks (mute, shuffle, repeat, play, next, prev, settings, theme, close, library) each reach a handler and change state. Then it runs the same page again with `https://www.youtube.com` removed from `script-src` and requires that pass to *fail* — one `script-src-elem` violation and a blocked loader. A check that cannot fail is not a check.
@@ -149,7 +149,7 @@ No software is "unhackable", and it would be dishonest to claim it. What is true
 | --- | --- | --- |
 | `songs/` | personal audio | 465 MB |
 | `MEASURED.apk` | built binary with songs baked in | 483 MB |
-| `MEASURED.exe` | built binary | 27.6 MiB (28,975,616 bytes) |
+| `MEASURED.exe` | built binary | 28.6 MiB (29,984,768 bytes) |
 | signing keystore | must stay private | — |
 
 Binaries are attached to the [releases](../../releases) instead.
