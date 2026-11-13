@@ -4,12 +4,12 @@ Local music player — one library, three shells: browser, Windows (Tauri + Rust
 
 ## Download
 
-Everything is on the [Releases](../../releases/latest) page.
+The two shells ship on different releases: [v2.1.0](https://github.com/alishayan0321/measured/releases/tag/v2.1.0) for Windows, [v2.0.3](https://github.com/alishayan0321/measured/releases/tag/v2.0.3) for Android. A signed, device-run 2.1.0 APK is still pending.
 
 | File | What it is |
 |---|---|
 | `MEASURED.exe` | **Windows 10/11 x64, 28.6 MiB** — the one to take. Portable: no installer, no admin rights. Put it in a folder with a `songs\` directory beside it, or point it at a folder from Settings → Add songs. |
-| `MEASURED.apk` | Android 7.0+ (API 24), 483 MB — all 148 songs already inside. |
+| `MEASURED.apk` | Android 7.0+ (API 24), 483 MB — all 148 songs already inside. This is the **[2.0.3 build](https://github.com/alishayan0321/measured/releases/tag/v2.0.3)**, not 2.1.0: Android waits on a signed, device-run build. |
 
 The Windows build is x64 only and needs the WebView2 runtime, which ships with Windows 11 and current Windows 10. Your saved songs, likes and settings live in `%APPDATA%\com.measured.player`, so replacing the executable keeps them.
 
@@ -23,7 +23,7 @@ On Android, tap the APK, allow your browser or file manager to *install unknown 
 - **The stage script moved out of the page.** `app.js` holds it now — the same text that used to sit inline, line endings aside — which let the CSP drop `'unsafe-inline'` from `script-src`. The only script origins allowed are `'self'` and `https://www.youtube.com`, for the IFrame API.
 - **Long jobs left the UI thread.** Library scans, conversion, fingerprinting and yt-dlp all run off the main thread. yt-dlp is killed at 120 s for a resolve and 900 s for a download, because a download is minutes of transfer, not a lookup.
 - **Caches key on content, not names.** The transcode cache keys on (name, mtime, size) and the duration cache on the same triple, so replacing a file with a different one re-converts it, and reloading an unchanged library decodes nothing.
-- **Android fixes.** The bridge's `prepare` is token-async like the YouTube calls, downloads write `<name>.part` and rename on success, playback pauses when another app takes audio focus or headphones are unplugged, and the foreground service always posts a notification before it parses its payload.
+- **Android fixes (in the source; the shipped APK is still 2.0.3).** The bridge's `prepare` is token-async like the YouTube calls, downloads write `<name>.part` and rename on success, playback pauses when another app takes audio focus or headphones are unplugged, and the foreground service always posts a notification before it parses its payload.
 - Version strings bumped to 2.1.0. The executable reports `FileVersion 2.1.0`.
 
 Full history: [2.0.3](docs/releases/RELEASE-2.0.3.md) · [2.0.2](docs/releases/RELEASE-2.0.2.md) · [2.0.1](docs/releases/RELEASE-2.0.1.md) · [2.0.0](docs/releases/RELEASE-2.0.0.md).
@@ -148,7 +148,7 @@ No software is "unhackable", and it would be dishonest to claim it. What is true
 | Artifact | Why | Size |
 | --- | --- | --- |
 | `songs/` | personal audio | 465 MB |
-| `MEASURED.apk` | built binary with songs baked in | 483 MB |
+| `MEASURED.apk` | built binary with songs baked in (2.0.3) | 483 MB |
 | `MEASURED.exe` | built binary | 28.6 MiB (29,980,672 bytes) |
 | signing keystore | must stay private | — |
 
