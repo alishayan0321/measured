@@ -8,6 +8,7 @@
 pub mod decode;
 pub mod fp;
 pub mod scan;
+pub mod tags;
 pub mod thumb;
 
 pub use decode::{decode_to_wav, duration_ms, Pcm};
