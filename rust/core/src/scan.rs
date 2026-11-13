@@ -1,4 +1,7 @@
 //! Directory scanning + the filename parser ported from `lib/parse-name.js`.
+//!
+//! Embedded tags are the primary source for artist and title; the filename
+//! parser is only the fallback for fields a tag leaves blank (see `tags`).
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -9,7 +12,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
-use crate::{decode, is_accepted};
+use crate::{decode, is_accepted, tags};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Track {
@@ -563,7 +566,15 @@ pub fn scan_dir_cached(
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
 
-        let (artist, title, video_id) = parse_name(&name);
+        // Tags are what the file itself declares; the filename parser only
+        // guesses from text the downloader chose, so it fills the gaps per
+        // field. A file with no readable tags keeps the parsed values.
+        let (parsed_artist, parsed_title, video_id) = parse_name(&name);
+        let tag_set = tags::Tags::read(entry.path());
+        let tag_artist = tag_set.as_ref().and_then(|t| t.artist.as_deref());
+        let tag_title = tag_set.as_ref().and_then(|t| t.title.as_deref());
+        let artist = tags::merge_field(tag_artist, parsed_artist.as_deref());
+        let title = tags::merge_field(tag_title, Some(&parsed_title)).unwrap_or(parsed_title);
         let ext = ext_of(&name).unwrap_or_default();
 
         let abs = entry.path().to_string_lossy().to_string();
@@ -655,6 +666,97 @@ mod tests {
         b.extend_from_slice(&data_len.to_le_bytes());
         b.resize(b.len() + data_len as usize, 0);
         fs::write(path, b).unwrap();
+    }
+
+    /// Minimal 16-bit PCM WAV carrying a RIFF INFO tag set. lofty reads INFO
+    /// (rather than ID3v2) as the file's only tag set, which also exercises the
+    /// `first_tag` fallback in `tags::Tags::read`.
+    fn write_test_wav_with_info(
+        path: &Path,
+        rate: u32,
+        channels: u16,
+        frames: u32,
+        info: &[(&str, &str)],
+    ) {
+        let data_len = frames * channels as u32 * 2;
+        let mut list: Vec<u8> = b"INFO".to_vec();
+        for (id, value) in info {
+            list.extend_from_slice(id.as_bytes());
+            list.extend_from_slice(&(value.len() as u32).to_le_bytes());
+            list.extend_from_slice(value.as_bytes());
+            if value.len() % 2 == 1 {
+                list.push(0);
+            }
+        }
+        let riff_len = 4 + (8 + 16) + (8 + list.len() as u32) + (8 + data_len);
+        let mut b: Vec<u8> = Vec::new();
+        b.extend_from_slice(b"RIFF");
+        b.extend_from_slice(&riff_len.to_le_bytes());
+        b.extend_from_slice(b"WAVEfmt ");
+        b.extend_from_slice(&16u32.to_le_bytes());
+        b.extend_from_slice(&1u16.to_le_bytes()); // PCM
+        b.extend_from_slice(&channels.to_le_bytes());
+        b.extend_from_slice(&rate.to_le_bytes());
+        b.extend_from_slice(&(rate * channels as u32 * 2).to_le_bytes());
+        b.extend_from_slice(&(channels * 2).to_le_bytes());
+        b.extend_from_slice(&16u16.to_le_bytes());
+        b.extend_from_slice(b"LIST");
+        b.extend_from_slice(&(list.len() as u32).to_le_bytes());
+        b.extend_from_slice(&list);
+        b.extend_from_slice(b"data");
+        b.extend_from_slice(&data_len.to_le_bytes());
+        b.resize(b.len() + data_len as usize, 0);
+        fs::write(path, b).unwrap();
+    }
+
+    #[test]
+    fn scan_prefers_tags_over_the_filename() {
+        let dir = temp_dir("tags");
+        let wav = dir.join("Wrong Artist - Wrong Title.wav");
+        write_test_wav_with_info(
+            &wav,
+            44_100,
+            2,
+            44_100,
+            &[("IART", "Tag Artist"), ("INAM", "Tag Title")],
+        );
+
+        let lib = scan_dir(&dir, None);
+        assert_eq!(lib.count, 1);
+        assert_eq!(
+            lib.tracks[0].artist.as_deref(),
+            Some("Tag Artist"),
+            "tag artist must beat the filename"
+        );
+        assert_eq!(lib.tracks[0].title, "Tag Title", "tag title must win");
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn scan_falls_back_to_the_filename_when_tags_are_absent() {
+        let dir = temp_dir("notags");
+        let wav = dir.join("Filename Artist - Filename Title.wav");
+        write_test_wav(&wav, 44_100, 2, 44_100);
+
+        let lib = scan_dir(&dir, None);
+        assert_eq!(lib.count, 1);
+        assert_eq!(
+            lib.tracks[0].artist.as_deref(),
+            Some("Filename Artist"),
+            "untagged files keep their parsed artist"
+        );
+        assert_eq!(lib.tracks[0].title, "Filename Title");
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn promo_tokens_match_whole_words_only() {
+        // "audio" is a promo token, "Audio Bullys" is a band: a substring test
+        // would erase the artist, which is why tokens are compared whole.
+        assert!(!looks_promo("Audio Bullys"));
+        assert!(looks_promo("Official Audio"));
     }
 
     #[test]

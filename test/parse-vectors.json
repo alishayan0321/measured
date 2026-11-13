@@ -30,6 +30,9 @@
     { "file": "Tycho - Awake [dQw4w9WgXcQ].mp3", "artist": "Tycho", "title": "Awake", "videoId": "dQw4w9WgXcQ" },
     { "file": "Artist - Song (Lyrics).mp3", "artist": "Artist", "title": "Song", "videoId": null },
     { "file": "Title | Official Video 2020.mp3", "artist": "Unknown", "title": "Title", "videoId": null },
-    { "file": "Title (Official Audio 2019).mp3", "artist": "Unknown", "title": "Title", "videoId": null }
+    { "file": "Title (Official Audio 2019).mp3", "artist": "Unknown", "title": "Title", "videoId": null },
+    { "file": "Audio Bullys - Shakedown.mp3", "artist": "Audio Bullys", "title": "Shakedown", "videoId": null },
+    { "file": "Audio Bullys - Shakedown (Official Video).webm", "artist": "Audio Bullys", "title": "Shakedown", "videoId": null },
+    { "file": "Shakedown | Audio Bullys.mp3", "artist": "Audio Bullys", "title": "Shakedown", "videoId": null }
   ]
 }
