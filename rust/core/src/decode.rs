@@ -5,7 +5,7 @@
 //! AIFF/WMA at all, which is exactly what this fixes: AIFF decodes here.
 
 use std::fs::{self, File};
-use std::io::{BufWriter, Seek, SeekFrom, Write};
+use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
@@ -43,9 +43,149 @@ impl Pcm {
     }
 }
 
+/// How far into a file to look for the data chunk when repairing a broken
+/// metadata chunk. Tag blocks sit at the front of the file; this is generous
+/// for cover art while keeping the repair from reading a whole track twice.
+const REPAIR_SCAN_BYTES: u64 = 16 * 1024 * 1024;
+
+/// A file whose metadata chunk declares a size past the end of the file makes
+/// symphonia's RIFF walker reject the whole stream, even though the audio is
+/// intact. The repair is length-preserving: the bad chunk's size field is
+/// replaced with the real distance to the data chunk, so the walker skips the
+/// metadata and reaches the audio.
+#[derive(Debug)]
+struct PatchedSource {
+    file: File,
+    len: u64,
+    pos: u64,
+    patch_at: u64,
+    patch: [u8; 4],
+}
+
+impl Read for PatchedSource {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.file.read(buf)?;
+        let start = self.pos;
+        let end = start + n as u64;
+        let patch_end = self.patch_at + 4;
+        if start < patch_end && end > self.patch_at {
+            for (i, byte) in buf[..n].iter_mut().enumerate() {
+                let off = start + i as u64;
+                if off >= self.patch_at && off < patch_end {
+                    *byte = self.patch[(off - self.patch_at) as usize];
+                }
+            }
+        }
+        self.pos = end;
+        Ok(n)
+    }
+}
+
+impl Seek for PatchedSource {
+    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
+        let p = self.file.seek(pos)?;
+        self.pos = p;
+        Ok(p)
+    }
+}
+
+impl symphonia::core::io::MediaSource for PatchedSource {
+    fn is_seekable(&self) -> bool {
+        true
+    }
+
+    fn byte_len(&self) -> Option<u64> {
+        Some(self.len)
+    }
+}
+
+/// Find the length-preserving patch that lets the RIFF walker skip a metadata
+/// chunk whose declared size runs past the end of the file. Returns the offset
+/// of the chunk's size field and the four bytes to put there.
+fn wav_chunk_size_repair(path: &Path) -> Option<(u64, [u8; 4])> {
+    let mut file = File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    let scan = len.min(REPAIR_SCAN_BYTES) as usize;
+    let mut buf = vec![0u8; scan];
+    file.read_exact(&mut buf).ok()?;
+    if buf.len() < 12 || &buf[0..4] != b"RIFF" || &buf[8..12] != b"WAVE" {
+        return None;
+    }
+
+    let mut pos = 12usize;
+    while pos + 8 <= buf.len() {
+        let size = u32::from_le_bytes(buf[pos + 4..pos + 8].try_into().ok()?) as u64;
+        let body = pos as u64 + 8;
+        if &buf[pos..pos + 4] == b"data" {
+            return None; // the walk reached the audio; nothing to repair
+        }
+        if body + size > len {
+            let data_at = find_data_chunk(&buf, pos + 8, len)?;
+            let real = u32::try_from(data_at.checked_sub(body)?).ok()?;
+            return Some((pos as u64 + 4, real.to_le_bytes()));
+        }
+        pos = (body + size + (size & 1)) as usize;
+    }
+    None
+}
+
+/// Locate the data chunk after a chunk whose size cannot be trusted. Chunk
+/// headers are word-aligned, so only even offsets are considered; a candidate
+/// is accepted only when its declared payload fits inside the file, and one
+/// that ends exactly at EOF wins.
+fn find_data_chunk(buf: &[u8], from: usize, len: u64) -> Option<u64> {
+    let mut fallback = None;
+    let mut i = from;
+    while i + 8 <= buf.len() {
+        if &buf[i..i + 4] == b"data" {
+            let size = u32::from_le_bytes(buf[i + 4..i + 8].try_into().ok()?) as u64;
+            let body = i as u64 + 8;
+            if size > 0 && body + size <= len {
+                if body + size == len {
+                    return Some(i as u64);
+                }
+                fallback.get_or_insert(i as u64);
+            }
+        }
+        i += 2;
+    }
+    fallback
+}
+
 fn open_track(path: &Path) -> Result<(Box<dyn symphonia::core::formats::FormatReader>, u32)> {
+    match open_track_with(path, None) {
+        Ok(v) => Ok(v),
+        Err(first) => {
+            // A malformed metadata chunk makes the RIFF walker reject the file
+            // even though the audio is intact; retry once with the bad size
+            // patched in the stream.
+            if let Some((at, patch)) = wav_chunk_size_repair(path) {
+                if let Ok(v) = open_track_with(path, Some((at, patch))) {
+                    return Ok(v);
+                }
+            }
+            Err(first)
+        }
+    }
+}
+
+fn open_track_with(
+    path: &Path,
+    patch: Option<(u64, [u8; 4])>,
+) -> Result<(Box<dyn symphonia::core::formats::FormatReader>, u32)> {
     let file = File::open(path).with_context(|| format!("open {}", path.display()))?;
-    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+    let len = file.metadata().map(|m| m.len()).unwrap_or(0);
+    let source: Box<dyn symphonia::core::io::MediaSource> = match patch {
+        Some((patch_at, bytes)) => Box::new(PatchedSource {
+            file,
+            len,
+            pos: 0,
+            patch_at,
+            patch: bytes,
+        }),
+        None => Box::new(file),
+    };
+    let mss = MediaSourceStream::new(source, Default::default());
 
     let mut hint = Hint::new();
     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
