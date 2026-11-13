@@ -559,13 +559,20 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     let tmp = path.with_file_name(format!("{name}.tmp"));
-    {
-        let mut file = std::fs::File::create(&tmp)?;
+    let written = std::fs::File::create(&tmp).and_then(|mut file| {
         file.write_all(bytes)?;
         // A rename can be durable while the bytes it points at are not, so the
         // temp file has to reach the disk before it is allowed to become the
         // settings file.
-        file.sync_all()?;
+        file.sync_all()
+    });
+    if let Err(err) = written {
+        // The live file was never touched, so a failed save may delete its temp
+        // file: leaving a partial one behind would be a settings file for the user
+        // to trip over. The closure above has already closed the handle, which
+        // Windows needs before it can unlink the file.
+        std::fs::remove_file(&tmp).ok();
+        return Err(err);
     }
     if let Err(err) = std::fs::rename(&tmp, path) {
         std::fs::remove_file(&tmp).ok();
