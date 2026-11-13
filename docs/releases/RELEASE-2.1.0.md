@@ -13,6 +13,7 @@ Reliability and measurement release. The interface gains shuffle and repeat; the
 * **A filename can no longer escape its folder.** `safe_name` accepts a single path component and nothing else, and is applied where `prepare` and `remove_added` join a user-supplied name onto a directory.
 * **Android.** The bridge's `prepare` is token-async like the YouTube calls, so it no longer blocks the WebView; downloads write `<name>.part` and rename on success, deleting the part file on failure; playback pauses when another app takes audio focus or headphones are unplugged; the foreground service always posts a notification before it parses its payload, which is what used to throw `RemoteServiceException` on Android 8+; and the transcode cache is capped instead of growing forever.
 * **Packaging.** `embeddings.json` is staged by both `rust/stage-ui.cjs` and `android/build.cjs` — it was 404ing in every packaged build, so the recommender's embedding feature was silently dead. The keystore password is no longer hardcoded: it is read from `MEASURED_KS_PASS`, else from the gitignored `android/measured.keystore.pass`, else generated and written there.
+* **The packaged window can listen to the media session again.** `rust/desktop` shipped with no `capabilities/` directory at all, and Tauri's ACL therefore refused the two `plugin:event|listen` calls the page makes for the SMTC bridge (`smtc-event`, `smtc-seek`). Both rejections were unhandled at boot, the listeners never registered, and the OS media keys and the system seek bar were silently dead in the installed app. `rust/desktop/capabilities/default.json` now grants exactly `core:event:allow-listen` to the `main` window and nothing else; every other shell call is an app command declared in `invoke_handler`, which the ACL does not gate.
 * Version strings bumped to 2.1.0 in `rust/desktop/Cargo.toml` and `rust/desktop/tauri.conf.json`. The executable reports `FileVersion 2.1.0`.
 
 ## Verification
@@ -30,6 +31,24 @@ Everything below was run on this tree. Numbers are the actual output, not a summ
 | `cargo build --release -p measured-desktop` | exit 0, 27.6 MiB, `FileVersion 2.1.0` |
 | `node android/build.cjs --fast` | aapt2 compile/link, javac, d8, dex append and zipalign all pass; stops at signing (see below) |
 
+The Rust gates above were run with `CARGO_PROFILE_DEV_DEBUG=0`. In this checkout path — which contains a space — the default dev profile dies inside `ring`'s C build with MSVC `D8050: failed to get command line into debug records` before any crate of ours is linted. That is a toolchain and path problem, not a lint finding, and the release profile compiles the same code with exit 0.
+
+Three facts about that 27.6 MiB, because a size in a table is easy to over-read. The bare `cargo build --release` exe does not embed its bundle resources: rebuilding with the real 23,575,744-byte `yt-dlp.exe` in place of the empty stub produced the same 28,975,616 bytes, so the figure is the compiled shell and the packaging step is what adds `yt-dlp`. The binary is not byte-reproducible — three builds of this tree gave three different SHA-256 values at that same size — so a digest names one binary, not the source. And the 46 MB the README carried until now matched the 2.0.2 asset, measured here at 48,576,000 bytes, which is simply not what this tree builds.
+
+### WebView2 smoke
+
+The packaged executable is launched and clicked now, not just built. `test/webview2-smoke.mjs` starts the exe with `--remote-debugging-port`, polls `/json/list`, attaches over CDP, installs its `unhandledrejection`, error and console collectors before the page settles (it reloads so they see the whole boot), and then drives real `Input.dispatchMouseEvent` clicks through the shell. It fails on any unhandled rejection, any uncaught error, any console line matching `not allowed by ACL` or `Uncaught`, and any step that does not reach its handler.
+
+| Run | Artifact | Result |
+| --- | --- | --- |
+| negative control, plain | 28,902,400 B, SHA-256 `9C27ED7F…4CF9` (pre-fix) | exit 1 — exactly 2 unhandled rejections, both `Command plugin:event\|listen not allowed by ACL` |
+| negative control, asserted | same | exit 0 — `rejections 2/2 as expected`; the harness passes only when it sees that exact defect signature, so a green run cannot hide it |
+| the fix | 28,975,616 B, SHA-256 `AC11CA87…5286` | exit 0 — 0 unhandled rejections, 0 uncaught errors, 0 ACL console lines, 12 steps pass, 1 blocked |
+
+Both binaries were run from the shipped path shape, `%LOCALAPPDATA%\MEASURED\measured-desktop.exe`. Runtime WebView2 157.0.4341.46, page `http://tauri.localhost/`, title `MEASURED`, 5 library rows. Steps that ran: settings sheet opens and closes, theme cycle dark→liquid→light, library drawer opens, a row plays (1.19 s of 159.3 s), Nowhere search returns 20 results, like a stream (`aria-pressed` false→true), shuffle on/off, repeat off→all→one→off, seek drag (3.67 s → 111.95 s of 159.3 s), vinyl scrub (`is-scrubbing` true, 111.96 s → 72.45 s), mute and next on the transport.
+
+The one blocked step is a stated gap, not a pass: "Add songs" opens a native OS picker, and `app.js` writes `#act-note` only after `await PlayerAPI.pickSongs()` resolves, so an empty note is exactly what an open modal looks like from the page. The dialog is not part of the page, so CDP can neither observe nor dismiss it. A denied `pick_songs` would have logged `not allowed by ACL` and the run asserts there are none; the picker's own behaviour is not asserted.
+
 The three claims most likely to be fake-green were checked adversarially rather than by reading the diff:
 
 * **The CSP check can fail.** It runs the page twice. The positive pass reports `violations: []`, the YouTube IFrame API loads, and ten real `Input.dispatchMouseEvent` clicks (mute, shuffle, repeat, play, next, prev, settings, theme, close, library) each reach a handler and change observable state. The negative pass strips `https://www.youtube.com` from `script-src` and must produce exactly one `script-src-elem` violation with the loader blocked. It does. A check that cannot fail is not a check.
@@ -42,10 +61,10 @@ The parser fixture is the other shared contract: 30 vectors, run by `test/parse.
 
 Stated plainly, because the alternative is a release note that reads better than the software:
 
-* **WebView2.** The CSP was verified in headless Chromium, not in the WebView2 runtime the packaged executable actually uses. Chromium and WebView2 share the engine, but that is an argument, not a measurement.
 * **Loudness by ear.** The DSP is verified against synthetic signals with known answers. Nobody has sat down and confirmed that the level matching sounds right on real music.
 * **Android on a device.** The build pipeline produces a dexed, aligned APK, but it was not signed here (the existing keystore's password is not available in this environment, and `build.cjs` correctly refuses to guess rather than overwrite the signing identity), so it was not installed or launched on a phone.
-* **The Windows executable's interface.** It was built and its version resource read; it was not launched and clicked through. The smoke checklist — library paints, play a local file, shuffle and repeat, like a stream, video mode loads the IFrame API, relaunch restores position and modes — is a human step.
+* **The media keys themselves.** The smoke proves both `plugin:event|listen` calls resolve, so the `smtc-event` and `smtc-seek` listeners are registered. Whether the OS then delivers a real key press through `souvlaki` needs a human at the keyboard, and was not tested.
+* **The download path.** The verified build was compiled with an empty `yt-dlp.exe` stub as its bundle resource, so nothing exercised yt-dlp. The Nowhere search that returned 20 results resolved through the app's own InnerTube path, not through yt-dlp, and no download was started.
 
 ## Known limits
 
