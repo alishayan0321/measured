@@ -149,7 +149,7 @@ No software is "unhackable", and it would be dishonest to claim it. What is true
 | --- | --- | --- |
 | `songs/` | personal audio | 465 MB |
 | `MEASURED.apk` | built binary with songs baked in | 483 MB |
-| `MEASURED.exe` | built binary | 28.6 MiB (29,984,768 bytes) |
+| `MEASURED.exe` | built binary | 28.6 MiB (29,980,672 bytes) |
 | signing keystore | must stay private | — |
 
 Binaries are attached to the [releases](../../releases) instead.
