@@ -8,7 +8,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
 
 const HERE = __dirname;
 const PLAYER = path.join(HERE, '..');
@@ -114,6 +114,42 @@ function copyTree(from, to, filter) {
 }
 
 // ── 0. sanity ────────────────────────────────────────────────────────────────
+// javac has to be 17 exactly. d8/R8 does not reject a newer class-file major
+// with a clear error; it dies of an NPE deep inside dexing, after aapt2 has
+// already compiled and linked the whole app. Probing the version up front turns
+// that opaque late crash into one line before anything is written.
+const REQUIRED_JAVAC_MAJOR = 17;
+
+// 'javac 17.0.20.1' -> 17, 'javac 21.0.1' -> 21, legacy 'javac 1.8.0_511' -> 8.
+function javacMajorVersion(banner) {
+  const m = /javac\s+([\d._]+)/i.exec(banner);
+  if (!m) return null;
+  const parts = m[1].split(/[._]/);
+  const major = Number(parts[0] === '1' ? parts[1] : parts[0]);
+  return Number.isInteger(major) ? major : null;
+}
+
+function assertJavac17() {
+  const javac = jdkBin('javac');
+  // Both streams are read: older JDKs print -version to stderr, and a
+  // 'Picked up JAVA_TOOL_OPTIONS' notice can arrive on stderr ahead of the
+  // banner, so the line is searched for rather than assumed to be first.
+  const probe = spawnSync(javac, ['-version'], { encoding: 'utf8', env });
+  const lines = `${probe.stdout || ''}${probe.stderr || ''}`
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean);
+  const banner = lines.find((l) => /javac\s+[\d._]+/i.test(l)) || lines[0] || '';
+  const major = javacMajorVersion(banner);
+  if (major === REQUIRED_JAVAC_MAJOR) return;
+  console.error(
+    `[FAIL] javac ${major ?? 'unknown'} found at ${javac} (${banner || probe.error?.message || 'no -version output'}); ` +
+      `this build requires javac ${REQUIRED_JAVAC_MAJOR} and d8 fails with an R8 NPE on any other major — ` +
+      `point MEASURED_JAVA_HOME at a JDK 17.`,
+  );
+  process.exit(1);
+}
+
 // --stage-only never touches the toolchain, so it must not demand one.
 if (!STAGE_ONLY) {
   for (const p of [JDK, BT, ANDROID_JAR]) {
@@ -122,6 +158,7 @@ if (!STAGE_ONLY) {
       process.exit(1);
     }
   }
+  assertJavac17();
 }
 console.log(
   `MEASURED android build  ${STAGE_ONLY ? '(stage only)' : FAST ? '(fast, no songs)' : '(full)'}`,
