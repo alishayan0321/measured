@@ -486,22 +486,44 @@ fn load_settings(app: &AppHandle) {
     load_settings_from(&settings_path(app), store());
 }
 
-/// Replaces the store only with a file that parsed in full.
+/// Reads `path` into `store`, or leaves `store` exactly as it was when the file
+/// does not parse.
 ///
-/// A truncated `settings.json` is not an empty store: it is what a crash during a
-/// non-atomic write, a disk error or a hand edit leaves behind, and reading it as
-/// empty is how a library the app already holds gets silently reset and then
-/// saved over. On a parse failure the running state is left exactly as it is.
+/// A truncated `settings.json` is what a crash during a non-atomic write, a disk
+/// error or a hand edit leaves behind; it is not an empty store, and none of it can
+/// be trusted. There is no partial recovery: the store keeps whatever it already
+/// holds (the empty defaults at startup) and the app then saves over the damaged
+/// file. So the unparsable bytes are copied to `settings.json.corrupt` first, once
+/// per damaged file, and that copy is what survives for the user to inspect.
 fn load_settings_from(path: &Path, store: &Store) {
-    let Ok(text) = std::fs::read_to_string(path) else {
+    let Ok(bytes) = std::fs::read(path) else {
         return;
     };
-    let Ok(map) = serde_json::from_str::<HashMap<String, serde_json::Value>>(&text) else {
+    let Ok(map) = serde_json::from_slice::<HashMap<String, serde_json::Value>>(&bytes) else {
+        keep_corrupt_settings(path, &bytes);
         return;
     };
     if let Ok(mut s) = store.lock() {
         *s = map;
     }
+}
+
+/// Copies the bytes that failed to parse next to the settings file, once.
+///
+/// Without this copy the damaged bytes would not outlive the save that follows the
+/// failed load, which rewrites `settings.json` from the defaults. Loading the same
+/// damaged bytes again does not rewrite the copy; a different damaged file replaces
+/// it, because only the newest damage is still worth recovering from.
+fn keep_corrupt_settings(path: &Path, bytes: &[u8]) {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let copy = path.with_file_name(format!("{name}.corrupt"));
+    if std::fs::read(&copy).is_ok_and(|old| old == bytes) {
+        return;
+    }
+    std::fs::write(&copy, bytes).ok();
 }
 
 fn save_settings(app: &AppHandle) {
@@ -779,10 +801,10 @@ mod tests {
     }
 
     // Whatever left the file short (an older build crashing mid-write, a disk
-    // error, a hand edit), the state the app already holds must survive the load
-    // instead of being replaced by an empty store and then saved over.
+    // error, a hand edit), the store must not take the damaged bytes, and the bytes
+    // themselves must outlive the save that follows the failed load.
     #[test]
-    fn truncated_settings_file_does_not_reset_the_running_state() {
+    fn truncated_settings_file_is_kept_as_corrupt_and_leaves_the_store_alone() {
         let dir = scratch_dir("truncated");
         let path = dir.join("settings.json");
         let broken: &[u8] = br#"{"library":["keep.mp3"],"volume":"#;
@@ -794,26 +816,42 @@ mod tests {
             .unwrap()
             .insert("library".into(), serde_json::json!(["keep.mp3"]));
         load_settings_from(&path, &store);
+        let held = store.lock().unwrap();
+        assert_eq!(held.len(), 1, "the load replaced the store");
         assert_eq!(
-            store.lock().unwrap().get("library"),
+            held.get("library"),
             Some(&serde_json::json!(["keep.mp3"])),
             "a truncated file must not empty the store"
         );
-        // Loading is read-only: the unparsable bytes stay on disk for the user to
-        // inspect rather than being erased by the next save.
-        assert_eq!(&std::fs::read(&path).unwrap()[..], broken);
+        drop(held);
 
-        // An instance that had nothing loaded yet stays empty instead of picking
-        // up garbage from the half-written file.
+        // The copy is the only thing that keeps the damaged bytes once the next
+        // save replaces settings.json, so it must hold them byte for byte.
+        let copy = dir.join("settings.json.corrupt");
+        assert_eq!(
+            &std::fs::read(&copy).unwrap()[..],
+            broken,
+            "the damaged bytes were not copied"
+        );
+
+        // The production path: nothing was loaded before, so the app starts from
+        // its defaults instead of picking up garbage from the half-written file.
         let empty: Store = Mutex::new(HashMap::new());
         load_settings_from(&path, &empty);
         assert!(empty.lock().unwrap().is_empty());
+        assert_eq!(&std::fs::read(&copy).unwrap()[..], broken);
 
-        // And the state that survived can still be persisted again in full.
+        // The state that survived can still be persisted again in full, and that
+        // save must not take the only copy of the damaged bytes with it.
         save_store_to(&path, &store);
         let saved: HashMap<String, serde_json::Value> =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(saved.get("library"), Some(&serde_json::json!(["keep.mp3"])));
+        assert_eq!(
+            &std::fs::read(&copy).unwrap()[..],
+            broken,
+            "the save deleted the corrupt copy"
+        );
 
         std::fs::remove_dir_all(&dir).ok();
     }
