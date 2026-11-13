@@ -624,6 +624,19 @@ fn proxy_base() -> String {
 
 fn main() {
     tauri::Builder::default()
+        // Plugins run in the order they are added, and a second launch has to be
+        // caught before it can open a window or write settings.json. The callback
+        // brings the copy the user is actually running back to the front instead
+        // of leaving a silently ignored click.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                if window.is_minimized().unwrap_or(false) {
+                    window.unminimize().ok();
+                }
+                window.show().ok();
+                window.set_focus().ok();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let handle = app.handle().clone();

@@ -12,6 +12,9 @@ tauri-build = { version = "2", features = [] }
 measured-core = { path = "../core" }
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
+# A second launch must hand its argv to the running copy and exit instead of
+# starting a rival process that would race this one on settings.json.
+tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
