@@ -8,7 +8,7 @@ Everything is on the [Releases](../../releases/latest) page.
 
 | File | What it is |
 |---|---|
-| `MEASURED.exe` | **Windows 10/11 x64, 46 MB** — the one to take. Portable: no installer, no admin rights. Put it in a folder with a `songs\` directory beside it, or point it at a folder from Settings → Add songs. |
+| `MEASURED.exe` | **Windows 10/11 x64, 27.6 MiB** — the one to take. Portable: no installer, no admin rights. Put it in a folder with a `songs\` directory beside it, or point it at a folder from Settings → Add songs. |
 | `MEASURED.apk` | Android 7.0+ (API 24), 483 MB — all 148 songs already inside. |
 
 The Windows build is x64 only and needs the WebView2 runtime, which ships with Windows 11 and current Windows 10. Your saved songs, likes and settings live in `%APPDATA%\com.measured.player`, so replacing the executable keeps them.
@@ -149,7 +149,7 @@ No software is "unhackable", and it would be dishonest to claim it. What is true
 | --- | --- | --- |
 | `songs/` | personal audio | 465 MB |
 | `MEASURED.apk` | built binary with songs baked in | 483 MB |
-| `MEASURED.exe` | built binary | 46 MB |
+| `MEASURED.exe` | built binary | 27.6 MiB (28,975,616 bytes) |
 | signing keystore | must stay private | — |
 
 Binaries are attached to the [releases](../../releases) instead.
