@@ -663,13 +663,25 @@ fn main() {
         // brings the copy the user is actually running back to the front instead
         // of leaving a silently ignored click.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                if window.is_minimized().unwrap_or(false) {
-                    window.unminimize().ok();
+            let app = app.clone();
+            // A second launch can land between plugin init and window creation, so
+            // `main` may not exist yet on the first look. Retry for about two
+            // seconds on a blocking thread, because this callback runs inside the
+            // first instance's window-procedure dispatch and sleeping there would
+            // stall it; give up after that instead of waiting forever.
+            tauri::async_runtime::spawn_blocking(move || {
+                for _ in 0..20 {
+                    if let Some(window) = app.get_webview_window("main") {
+                        if window.is_minimized().unwrap_or(false) {
+                            window.unminimize().ok();
+                        }
+                        window.show().ok();
+                        window.set_focus().ok();
+                        return;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                 }
-                window.show().ok();
-                window.set_focus().ok();
-            }
+            });
         }))
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
