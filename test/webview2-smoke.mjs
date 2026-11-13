@@ -21,22 +21,31 @@
  *   - any unhandled promise rejection fails the run (not only the known ones);
  *   - any uncaught error fails the run;
  *   - any console line matching /not allowed by ACL|Uncaught/ fails the run;
- *   - a click step that throws or whose assertion fails fails the run.
+ *   - a click step that throws or whose assertion fails fails the run;
+ *   - the library must paint at least one row;
+ *   - a BLOCKED step fails the run unless it is the native file picker, which
+ *     lives outside the page and is the one surface CDP cannot observe.
  * A step that cannot run because the environment lacks something (network, a
- * playable track) is reported as BLOCKED with the observed reason and does not
- * fail the run — this file never pretends to have tested what it did not.
+ * playable track) is still reported as BLOCKED with the observed reason — but
+ * it fails the verdict instead of quietly shrinking the surface, so a broken
+ * environment cannot come out green. This file never pretends to have tested
+ * what it did not.
  *
  * Exit codes: 0 pass, 1 fail, 2 harness error (could not attach, exe missing).
  *
  * Usage:
  *   node test/webview2-smoke.mjs --exe "%LOCALAPPDATA%\MEASURED\MEASURED.exe"
- *   node test/webview2-smoke.mjs --exe <pre-fix exe> --expect-rejections 2 \
- *        --expect-match "not allowed by ACL"
+ *   node test/webview2-smoke.mjs --exe <pre-fix exe> --expect-rejections 2
+ *   node test/webview2-smoke.mjs --exe <any exe> --expect-rejections 2 \
+ *        --expect-match "some other text"        # must exit non-zero
  *
  * `--expect-rejections` turns the run into a negative control: it passes only
- * if exactly that many unhandled rejections occurred and every --expect-match
- * substring appears in one of them. That is how the pre-fix artifact proves the
- * harness can actually see the defect it was written for.
+ * if exactly that many unhandled rejections occurred AND every --expect-match
+ * substring appears in one of them. When --expect-match is omitted with a
+ * positive count the signature defaults to "not allowed by ACL", so a run that
+ * counts two arbitrary rejections cannot pass. That is how the pre-fix artifact
+ * proves the harness can actually see the defect it was written for, and how a
+ * wrong signature proves it is not just counting.
  */
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -73,7 +82,19 @@ if (!exeArg || exeArg === true) {
 const EXE = resolve(String(exeArg));
 const SONGS = arg('songs', '');
 const expectRejections = arg('expect-rejections', null);
-const expectMatches = allArgs('expect-match');
+const expectMatchesArg = allArgs('expect-match');
+// A negative control that names no signature would accept any N rejections,
+// which is exactly the false green this harness exists to prevent. With a
+// positive count, default to the defect string the pre-fix artifact emits.
+const expectMatches = expectMatchesArg.length
+  ? expectMatchesArg
+  : expectRejections !== null && Number(expectRejections) > 0
+    ? ['not allowed by ACL']
+    : [];
+if (expectRejections !== null && !/^\d+$/.test(String(expectRejections))) {
+  console.error(`harness: --expect-rejections wants a non-negative integer, got ${JSON.stringify(expectRejections)}`);
+  process.exit(2);
+}
 const STEP_TIMEOUT = Number(arg('step-timeout', 40000));
 const BOOT_TIMEOUT = Number(arg('boot-timeout', 40000));
 
@@ -446,6 +467,16 @@ async function main() {
 
     const bootRejections = await page.evaluate('window.__smoke.rejections.slice()');
     console.log(`rows       ${rows}`);
+    // A library that never painted would turn every playback assertion below
+    // into BLOCKED, and without this row the run could still exit 0 with no
+    // working player at all. Assert it where the cause is still visible.
+    results.push({
+      name: 'library rows rendered',
+      status: rows >= 1 ? 'PASS' : 'FAIL',
+      detail: `${rows} row(s)`,
+      ms: 0,
+    });
+    line(rows >= 1 ? 'PASS' : 'FAIL', 'library rows rendered', `${rows} row(s)`);
     console.log('');
 
     // ------------------------------------------------------------- steps
@@ -558,8 +589,12 @@ async function main() {
       await page.evaluate(`(() => { const b = document.querySelector('#yt-list .vt-row .like'); if (b) b.click(); return true; })()`);
       await sleep(300);
       const after = await page.evaluate(`(() => { const b = document.querySelector('#yt-list .vt-row .like'); return b ? b.getAttribute('aria-pressed') : null; })()`);
-      if (after !== 'true') return { ok: false, detail: `aria-pressed ${before} → ${after}` };
-      return { ok: true, detail: `aria-pressed ${before} → true` };
+      // Likes are persisted in settings, so a stream liked by an earlier run is
+      // still liked when this run reaches it. The contract is that the heart
+      // toggles; asserting the end state is always 'true' failed on every run
+      // after the first one, for the wrong reason.
+      if (after === null || after === before) return { ok: false, detail: `aria-pressed ${before} → ${after}` };
+      return { ok: true, detail: `aria-pressed ${before} → ${after}` };
     });
 
     await page.click('#lib-x').catch(() => {});
@@ -602,10 +637,20 @@ async function main() {
     await step('vinyl scrub grabs and moves the platter', async () => {
       const geo = await page.evaluate(`(() => {
         const d = document.getElementById('vd-spin') || document.getElementById('vd-disc');
+        const deck = document.getElementById('deck');
         const a = document.getElementById('audio');
-        if (!d || !a.src || !isFinite(a.duration) || a.duration <= 0) return null;
+        if (!d || !deck || !a.src || !isFinite(a.duration) || a.duration <= 0) return null;
         d.scrollIntoView({ block: 'center' });
         const r = d.getBoundingClientRect();
+        // The grab class can be added and dropped inside one frame, so sampling it
+        // between mouse moves missed it: a run failed with is-scrubbing=false while
+        // the playhead had still moved. Record every class change on the deck.
+        window.__scrubSeen = false;
+        if (window.__scrubObs) window.__scrubObs.disconnect();
+        window.__scrubObs = new MutationObserver(() => {
+          if (deck.classList.contains('is-scrubbing')) window.__scrubSeen = true;
+        });
+        window.__scrubObs.observe(deck, { attributes: true, attributeFilter: ['class'] });
         return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, rad: Math.min(r.width, r.height) * 0.35, t: a.currentTime };
       })()`);
       if (!geo) return { blocked: 'no loaded track / platter not addressable' };
@@ -615,25 +660,21 @@ async function main() {
       const y1 = geo.cy - geo.rad;   // a quarter turn clockwise? (top) — 90° of arc
       await page.mouse('mouseMoved', x0, y0, { buttons: 0 });
       await page.mouse('mousePressed', x0, y0, { button: 'left', buttons: 1 });
-      const marks = [];
       for (let i = 1; i <= 8; i++) {
         const a = (Math.PI / 2) * (i / 8);
         await page.mouse('mouseMoved', geo.cx + geo.rad * Math.cos(a), geo.cy - geo.rad * Math.sin(a), { button: 'left', buttons: 1 });
-        await sleep(30);
-        marks.push(await page.evaluate(`(() => ({
-          scrubbing: document.getElementById('deck').classList.contains('is-scrubbing'),
-          t: document.getElementById('audio').currentTime,
-          bubble: !document.querySelector('.scrub-bubble').hidden
-        }))()`));
+        await sleep(60);
       }
       await page.mouse('mouseReleased', x1, y1, { button: 'left', buttons: 0 });
       await sleep(300);
-      const moved = marks.some((m) => m.scrubbing);
-      const bubble = marks.some((m) => m.bubble);
+      const moved = await page.evaluate(`(() => {
+        if (window.__scrubObs) { window.__scrubObs.disconnect(); window.__scrubObs = null; }
+        return !!window.__scrubSeen;
+      })()`);
       const after = await page.evaluate('document.getElementById("audio").currentTime');
       const delta = after - geo.t;
       if (!moved || Math.abs(delta) < 0.2) {
-        return { ok: false, detail: `is-scrubbing=${moved} bubble=${bubble} t ${geo.t.toFixed(2)} → ${after.toFixed(2)}` };
+        return { ok: false, detail: `is-scrubbing=${moved} t ${geo.t.toFixed(2)} → ${after.toFixed(2)}` };
       }
       return { ok: true, detail: `is-scrubbing=true, t ${geo.t.toFixed(2)} → ${after.toFixed(2)}` };
     });
@@ -695,6 +736,11 @@ async function main() {
 
     console.log('');
     const stepFails = results.filter((r) => r.status === 'FAIL');
+    // The native picker is the only step CDP cannot see; every other BLOCKED
+    // step means a named surface was never exercised, so it fails the run.
+    const PICKER_STEP = 'add songs invokes the native picker';
+    const stepBlocked = results.filter((r) => r.status === 'BLOCKED');
+    const blockedOther = stepBlocked.filter((r) => r.name !== PICKER_STEP);
 
     let verdict;
     if (expectRejections !== null) {
@@ -703,12 +749,14 @@ async function main() {
       const want = Number(expectRejections);
       const missing = expectMatches.filter((m) => !rejections.some((r) => r.includes(m)));
       const okCount = rejections.length === want;
-      verdict = okCount && missing.length === 0;
+      verdict = okCount && missing.length === 0 && blockedOther.length === 0;
       console.log(`mode       negative control (--expect-rejections ${want})`);
-      console.log(`rejections ${rejections.length}/${want}${okCount ? ' as expected' : ' MISMATCH'}`);
+      console.log(`signature  ${JSON.stringify(expectMatches)}`);
+      console.log(`rejections ${rejections.length}/${want}${okCount ? ' counted' : ' MISMATCH'}`);
       if (missing.length) console.log(`missing    ${JSON.stringify(missing)}`);
     } else {
-      verdict = rejections.length === 0 && errors.length === 0 && aclLines.length === 0 && stepFails.length === 0;
+      verdict = rejections.length === 0 && errors.length === 0 && aclLines.length === 0
+        && stepFails.length === 0 && blockedOther.length === 0;
     }
 
     if (rejections.length) {
@@ -726,6 +774,11 @@ async function main() {
       console.log('ACL / Uncaught console lines:');
       aclLines.forEach((l, i) => console.log(`  [${i + 1}] ${l}`));
     }
+    if (blockedOther.length) {
+      console.log('');
+      console.log(`blocked steps other than ${JSON.stringify(PICKER_STEP)} (a fail):`);
+      blockedOther.forEach((r) => console.log(`  [${r.name}] ${r.detail}`));
+    }
     if (childText) {
       console.log('');
       console.log('child stdout/stderr:');
@@ -738,8 +791,7 @@ async function main() {
 
     console.log('');
     const passed = results.filter((r) => r.status === 'PASS').length;
-    const blocked = results.filter((r) => r.status === 'BLOCKED').length;
-    console.log(`steps      ${passed} pass, ${stepFails.length} fail, ${blocked} blocked`);
+    console.log(`steps      ${passed} pass, ${stepFails.length} fail, ${stepBlocked.length} blocked (${blockedOther.length} not the picker)`);
     console.log(`VERDICT    ${verdict ? 'PASS' : 'FAIL'}`);
     return verdict ? 0 : 1;
   } finally {
