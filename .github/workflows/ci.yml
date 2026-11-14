@@ -109,3 +109,49 @@ jobs:
         # `cargo check` never links them, so before this step they had never
         # run in CI at all — the guard was covered on paper only.
         run: cargo test -p measured-desktop
+
+  android:
+    name: android (compile-only)
+    # android/build.cjs is the whole APK pipeline — aapt2 compile/link, javac,
+    # d8, the dex append, zipalign, apksigner — and no CI job ran it, so a
+    # broken resource or Java file had no automated gate. This job runs the
+    # same script with --fast (no songs) on every push to master and every pull
+    # request. It never touches a device and never uses a signing secret.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          # d8 dies with an R8 NPE on class files from a newer javac, so the
+          # major is pinned to 17. build.cjs also refuses to run on anything
+          # else before it writes a single file.
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v4
+        with:
+          # build.cjs hard-codes build-tools 34.0.0 and platforms/android-34.
+          packages: "platforms;android-34 build-tools;34.0.0"
+      - name: toolchain names
+        # build.cjs addresses the toolchain through hard-coded Windows file
+        # names (aapt2.exe, javac.exe, ...), which is by itself enough to stop
+        # it running on Linux: the first probe it does is `javac.exe -version`.
+        # This job runs the same script on ubuntu, so the names it asks for
+        # have to resolve to the Linux binaries; symlinks do that without
+        # touching the script.
+        run: |
+          for t in aapt2 zipalign; do
+            ln -sf "$ANDROID_HOME/build-tools/34.0.0/$t" "$ANDROID_HOME/build-tools/34.0.0/$t.exe"
+          done
+          for t in java javac keytool; do
+            ln -sf "$JAVA_HOME/bin/$t" "$JAVA_HOME/bin/$t.exe"
+          done
+      - name: build (fast, no songs)
+        # --fast skips the 465 MB of audio but runs the whole toolchain. It also
+        # self-signs the APK with a throwaway keystore generated in the runner:
+        # build.cjs has no --no-sign switch, and CI supplies no keystore and no
+        # secret, so the signature is worthless and dies with the runner.
+        run: |
+          export MEASURED_JAVA_HOME="$JAVA_HOME"
+          export MEASURED_ANDROID_SDK="$ANDROID_HOME"
+          node android/build.cjs --fast
