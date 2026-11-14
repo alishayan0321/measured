@@ -53,6 +53,8 @@ Full history: [2.1.1](docs/releases/RELEASE-2.1.1.md) · [2.1.0](docs/releases/R
 | Windows | Tauri 2 + Rust core | Bundled songs, native "Add songs" dialog, asset-protocol audio |
 | Android | WebView over `file:///android_asset` (min SDK 24) | Bundled songs, system file picker, media notification, on-device streaming |
 
+Tags are read on Windows and Android: both take the embedded artist and title and fall back to the filename parser per field when a tag is missing or blank, and Android also reads the album. The web shell has no tag reader — it always names tracks from the filename.
+
 The interface is one page in all three. `index.html` carries the markup and `app.js` the stage script; `styles/base.css` and `styles/app.css` carry the presentation, split out of the single file they used to live in. `api.js` is the single bridge: on the web it fetches `/api/tracks`, on desktop it `invoke`s Rust commands, on Android it calls `AndroidBridge` through `@JavascriptInterface`.
 
 ## Architecture

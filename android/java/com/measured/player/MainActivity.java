@@ -188,7 +188,14 @@ public class MainActivity extends Activity {
                         JSONObject o = new JSONObject();
                         o.put("file", f.getName());
                         o.put("bytes", f.length());
-                        o.put("dur", durationOf(f));
+                        Meta m = Meta.of(f);
+                        o.put("dur", m.secs);
+                        /* Omitted, not null: the page falls back to the filename
+                           parser per field, so an absent key is the same as a
+                           blank tag. */
+                        if (m.artist != null) o.put("artist", m.artist);
+                        if (m.title != null) o.put("title", m.title);
+                        if (m.album != null) o.put("album", m.album);
                         o.put("mtime", f.lastModified());
                         o.put("url", Uri.fromFile(f).toString());
                         added.put(o);
@@ -460,33 +467,66 @@ public class MainActivity extends Activity {
         return (" " + AUDIO_EXT + " ").contains(" " + ext + " ");
     }
 
-    /* MediaMetadataRetriever opens and parses the file, and it is the slowest part
-       of listing added songs. Key on the trio that changes when a file is
-       replaced, so a repeat scan never re-decodes. */
-    private static final java.util.Map<String, Long> DUR_CACHE = new java.util.HashMap<>();
+    /* One MediaMetadataRetriever pass yields the duration and the tag fields the
+       bridge returns. Opening and parsing the file is the slowest part of listing
+       added songs, so a second retriever for the tags would double that cost.
+       Key on the trio that changes when a file is replaced, so a repeat scan
+       never re-reads. */
+    static final class Meta {
+        final long secs;
+        final String artist;
+        final String title;
+        final String album;
 
-    private static long durationOf(File f) {
-        final String key = f.getName() + "|" + f.lastModified() + "|" + f.length();
-        synchronized (DUR_CACHE) {
-            Long hit = DUR_CACHE.get(key);
-            if (hit != null) return hit;
+        Meta(long secs, String artist, String title, String album) {
+            this.secs = secs;
+            this.artist = artist;
+            this.title = title;
+            this.album = album;
         }
-        long secs;
-        MediaMetadataRetriever r = new MediaMetadataRetriever();
-        try {
-            r.setDataSource(f.getAbsolutePath());
-            String d = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
-            secs = d == null ? 0 : Long.parseLong(d) / 1000;
-        } catch (Exception e) {
-            secs = 0;
-        } finally {
-            try { r.release(); } catch (Exception ignored) { }
+
+        private static final java.util.Map<String, Meta> CACHE = new java.util.HashMap<>();
+
+        static Meta of(File f) {
+            final String key = f.getName() + "|" + f.lastModified() + "|" + f.length();
+            synchronized (CACHE) {
+                Meta hit = CACHE.get(key);
+                if (hit != null) return hit;
+            }
+            long secs = 0;
+            String artist = null, title = null, album = null;
+            MediaMetadataRetriever r = new MediaMetadataRetriever();
+            try {
+                r.setDataSource(f.getAbsolutePath());
+                String d = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+                try {
+                    secs = d == null ? 0 : Long.parseLong(d) / 1000;
+                } catch (NumberFormatException ignored) {
+                    /* A duration we cannot parse must not cost us the tags. */
+                }
+                artist = clean(r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST));
+                title = clean(r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE));
+                album = clean(r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM));
+            } catch (Exception e) {
+                /* An unreadable file keeps 0:00 and the filename fallback. */
+            } finally {
+                try { r.release(); } catch (Exception ignored) { }
+            }
+            Meta m = new Meta(secs, artist, title, album);
+            synchronized (CACHE) {
+                if (CACHE.size() > 2000) CACHE.clear();
+                CACHE.put(key, m);
+            }
+            return m;
         }
-        synchronized (DUR_CACHE) {
-            if (DUR_CACHE.size() > 2000) DUR_CACHE.clear();
-            DUR_CACHE.put(key, secs);
+
+        /* A tag that is empty or only whitespace carries no information, so it
+           counts as absent and the page's filename parser names that field. */
+        private static String clean(String value) {
+            if (value == null) return null;
+            String t = value.trim();
+            return t.isEmpty() ? null : t;
         }
-        return secs;
     }
 
     private String readAsset(String path) {
