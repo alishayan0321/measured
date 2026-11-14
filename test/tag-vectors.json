@@ -1,0 +1,85 @@
+{
+  "_comment": "Tag containers the library scan actually meets, declared here so rust/core/tests/tag_matrix.rs can build the bytes at test time instead of committing binaries. 'tags' is what the container declares (null = field/frame absent); 'expect' is what Tags::read must return; 'scanned' is what scan_dir must expose after merging the filename. Every filename parses to a different artist and title than the tags, so a tag winning is observable rather than assumed. Filenames are unique because all cases land in one directory: a scan lists files, not cases.",
+  "cases": [
+    {
+      "id": "id3v2.3-utf16",
+      "container": "mp3/id3v2.3",
+      "filename": "Filename Artist - Filename Title 1.mp3",
+      "tags": { "title": "Tag Title", "artist": "Tag Artist", "album": null, "track": null, "disc": null },
+      "expect": { "tags_read": true, "title": "Tag Title", "artist": "Tag Artist", "album": null, "track": null, "disc": null },
+      "scanned": { "title": "Tag Title", "artist": "Tag Artist" }
+    },
+    {
+      "id": "id3v2.4-utf8",
+      "container": "mp3/id3v2.4",
+      "filename": "Filename Artist - Filename Title 2.mp3",
+      "tags": { "title": "Tag Title", "artist": "Tag Artist", "album": "Tag Album", "track": 7, "disc": 2 },
+      "expect": { "tags_read": true, "title": "Tag Title", "artist": "Tag Artist", "album": "Tag Album", "track": 7, "disc": 2 },
+      "scanned": { "title": "Tag Title", "artist": "Tag Artist" }
+    },
+    {
+      "id": "mp4-ilst",
+      "container": "mp4/ilst",
+      "filename": "Filename Artist - Filename Title 3.m4a",
+      "tags": { "title": "Tag Title", "artist": "Tag Artist", "album": "Tag Album", "track": 7, "disc": 2 },
+      "expect": { "tags_read": true, "title": "Tag Title", "artist": "Tag Artist", "album": "Tag Album", "track": 7, "disc": 2 },
+      "scanned": { "title": "Tag Title", "artist": "Tag Artist" }
+    },
+    {
+      "id": "flac-vorbis",
+      "container": "flac/vorbis",
+      "filename": "Filename Artist - Filename Title 4.flac",
+      "tags": { "title": "Tag Title", "artist": "Tag Artist", "album": "Tag Album", "track": 3, "disc": 1 },
+      "expect": { "tags_read": true, "title": "Tag Title", "artist": "Tag Artist", "album": "Tag Album", "track": 3, "disc": 1 },
+      "scanned": { "title": "Tag Title", "artist": "Tag Artist" }
+    },
+    {
+      "id": "opus-tags",
+      "container": "ogg/opus",
+      "filename": "Filename Artist - Filename Title 5.opus",
+      "tags": { "title": "Tag Title", "artist": "Tag Artist", "album": "Tag Album", "track": 3, "disc": 1 },
+      "expect": { "tags_read": true, "title": "Tag Title", "artist": "Tag Artist", "album": "Tag Album", "track": 3, "disc": 1 },
+      "scanned": { "title": "Tag Title", "artist": "Tag Artist" }
+    },
+    {
+      "id": "untagged-wav",
+      "container": "wav/pcm",
+      "filename": "Filename Artist - Filename Title 6.wav",
+      "tags": null,
+      "expect": { "tags_read": false, "title": null, "artist": null, "album": null, "track": null, "disc": null },
+      "scanned": { "title": "Filename Title 6", "artist": "Filename Artist" }
+    },
+    {
+      "id": "blank-title",
+      "container": "mp3/id3v2.3",
+      "filename": "Filename Artist - Filename Title 7.mp3",
+      "tags": { "title": "   ", "artist": "Tag Artist", "album": null, "track": null, "disc": null },
+      "expect": { "tags_read": true, "title": null, "artist": "Tag Artist", "album": null, "track": null, "disc": null },
+      "scanned": { "title": "Filename Title 7", "artist": "Tag Artist" }
+    },
+    {
+      "id": "title-only",
+      "container": "mp3/id3v2.3",
+      "filename": "Filename Artist - Filename Title 8.mp3",
+      "tags": { "title": "Tag Title", "artist": null, "album": null, "track": null, "disc": null },
+      "expect": { "tags_read": true, "title": "Tag Title", "artist": null, "album": null, "track": null, "disc": null },
+      "scanned": { "title": "Tag Title", "artist": "Filename Artist" }
+    },
+    {
+      "id": "artist-only",
+      "container": "mp3/id3v2.3",
+      "filename": "Filename Artist - Filename Title 9.mp3",
+      "tags": { "title": null, "artist": "Tag Artist", "album": null, "track": null, "disc": null },
+      "expect": { "tags_read": true, "title": null, "artist": "Tag Artist", "album": null, "track": null, "disc": null },
+      "scanned": { "title": "Filename Title 9", "artist": "Tag Artist" }
+    },
+    {
+      "id": "truncated-id3",
+      "container": "mp3/truncated-id3",
+      "filename": "Filename Artist - Filename Title 10.mp3",
+      "tags": null,
+      "expect": { "tags_read": false, "title": null, "artist": null, "album": null, "track": null, "disc": null },
+      "scanned": { "title": "Filename Title 10", "artist": "Filename Artist" }
+    }
+  ]
+}
