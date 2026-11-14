@@ -4,18 +4,24 @@ Local music player — one library, three shells: browser, Windows (Tauri + Rust
 
 ## Download
 
-The two shells ship on different releases: [v2.1.0](https://github.com/alishayan0321/measured/releases/tag/v2.1.0) for Windows, [v2.0.3](https://github.com/alishayan0321/measured/releases/tag/v2.0.3) for Android. A signed, device-run 2.1.0 APK is still pending.
+The two shells ship on different releases: [v2.1.1](https://github.com/alishayan0321/measured/releases/tag/v2.1.1) for Windows, [v2.0.3](https://github.com/alishayan0321/measured/releases/tag/v2.0.3) for Android. A signed, device-run 2.1.1 APK is still pending.
 
 | File | What it is |
 |---|---|
-| `MEASURED.exe` | **Windows 10/11 x64, 28.6 MiB** — the one to take. Portable: no installer, no admin rights. Put it in a folder with a `songs\` directory beside it, or point it at a folder from Settings → Add songs. |
-| `MEASURED.apk` | Android 7.0+ (API 24), 483 MB — all 148 songs already inside. This is the **[2.0.3 build](https://github.com/alishayan0321/measured/releases/tag/v2.0.3)**, not 2.1.0: Android waits on a signed, device-run build. |
+| `MEASURED.exe` | **Windows 10/11 x64, 28.71 MiB** — the one to take. Portable: no installer, no admin rights. Put it in a folder with a `songs\` directory beside it, or point it at a folder from Settings → Add songs. |
+| `MEASURED.apk` | Android 7.0+ (API 24), 483 MB — all 148 songs already inside. This is the **[2.0.3 build](https://github.com/alishayan0321/measured/releases/tag/v2.0.3)**, not 2.1.1: Android waits on a signed, device-run build. |
 
 The Windows build is x64 only and needs the WebView2 runtime, which ships with Windows 11 and current Windows 10. Your saved songs, likes and settings live in `%APPDATA%\com.measured.player`, so replacing the executable keeps them.
 
 On Android, tap the APK, allow your browser or file manager to *install unknown apps* (the normal Android prompt for any app not from the Play Store), then install.
 
-## What's new in 2.1.0
+## What's new in 2.1.1
+
+- **Settings can no longer be lost.** `settings.json` is written to a sibling temp file, fsynced and renamed over the old one, so a crash mid-write leaves the previous file intact instead of a truncated one. A file that still fails to parse is copied to `settings.json.corrupt` before the next save replaces it, so the damaged bytes survive for inspection instead of vanishing. Saves run off the UI thread, so dragging the volume no longer does disk work on the thread the window waits on.
+- **A second launch focuses the first.** `tauri-plugin-single-instance` hands the second launch's argv to the running copy and exits, so two windows can no longer race each other on `settings.json` and clobber likes, position and theme.
+- Version strings bumped to 2.1.1. The executable reports `FileVersion 2.1.1`.
+
+### 2.1.0
 
 - **Shuffle and repeat.** Off/all/one in the transport, `s` and `r` on the keyboard, remembered across relaunches. Shuffle is a queue rather than a coin flip: it draws from the view you are looking at, not the whole library, and it keeps the same 12-track repeat window the recommender uses, so turning shuffle on is not a way to hear the same song twice.
 - **Loudness is measured, not guessed.** `fp.rs` runs K-weighting, 400 ms blocks on a 100 ms hop, a -70 LUFS absolute gate and a -10 LU relative gate, with true peak 4x oversampled. A -23 LUFS synthetic tone reads -23 within the ±0.5 LU the tests assert, at both 44.1 and 48 kHz. Long tracks are read in head, middle and tail windows instead of being decoded end to end.
@@ -26,7 +32,7 @@ On Android, tap the APK, allow your browser or file manager to *install unknown 
 - **Android fixes (in the source; the shipped APK is still 2.0.3).** The bridge's `prepare` is token-async like the YouTube calls, downloads write `<name>.part` and rename on success, playback pauses when another app takes audio focus or headphones are unplugged, and the foreground service always posts a notification before it parses its payload.
 - Version strings bumped to 2.1.0. The executable reports `FileVersion 2.1.0`.
 
-Full history: [2.0.3](docs/releases/RELEASE-2.0.3.md) · [2.0.2](docs/releases/RELEASE-2.0.2.md) · [2.0.1](docs/releases/RELEASE-2.0.1.md) · [2.0.0](docs/releases/RELEASE-2.0.0.md).
+Full history: [2.1.1](docs/releases/RELEASE-2.1.1.md) · [2.1.0](docs/releases/RELEASE-2.1.0.md) · [2.0.3](docs/releases/RELEASE-2.0.3.md) · [2.0.2](docs/releases/RELEASE-2.0.2.md) · [2.0.1](docs/releases/RELEASE-2.0.1.md) · [2.0.0](docs/releases/RELEASE-2.0.0.md).
 
 ## The 2.0 feature set
 
@@ -124,7 +130,7 @@ node test/wire.test.cjs        #  7  the online-learning wire format
 node test/stage.test.cjs       #  5  both staging scripts produce a complete bundle
 node test/repeat.test.cjs      #  3  the repeat window
 node test/csp.check.cjs        #     headless Chromium: CSP positive + negative control
-cd rust && cargo test --workspace   # 18  15 core, 3 desktop
+cd rust && cargo test --workspace   # 24  18 core, 6 desktop
 ```
 
 `test/csp.check.cjs` is the one that needs explaining. It serves `rust/desktop/dist` with the exact CSP from `tauri.conf.json` as a response header, loads it in headless Chromium, and asserts there are no `securitypolicyviolation` events, that the YouTube IFrame API loads, and that ten real clicks (mute, shuffle, repeat, play, next, prev, settings, theme, close, library) each reach a handler and change state. Then it runs the same page again with `https://www.youtube.com` removed from `script-src` and requires that pass to *fail* — one `script-src-elem` violation and a blocked loader. A check that cannot fail is not a check.
@@ -149,7 +155,7 @@ No software is "unhackable", and it would be dishonest to claim it. What is true
 | --- | --- | --- |
 | `songs/` | personal audio | 465 MB |
 | `MEASURED.apk` | built binary with songs baked in (2.0.3) | 483 MB |
-| `MEASURED.exe` | built binary | 28.6 MiB (29,980,672 bytes) |
+| `MEASURED.exe` | built binary | 28.71 MiB (30,102,528 bytes) |
 | signing keystore | must stay private | — |
 
 Binaries are attached to the [releases](../../releases) instead.
