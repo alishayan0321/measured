@@ -60,26 +60,6 @@ jobs:
         # npm network access, unlike every other job.
         run: npx --yes eslint@9.39.1 app.js api.js lib/*.js
 
-  js-lint:
-    name: js lint
-    # eslint.config.mjs landed with card S but no job ran it, so the config was
-    # decoration: a typo'd global or a dead binding could still reach master.
-    # This job is the gate. It needs npm network access to fetch the pinned
-    # eslint, because the repo deliberately has no package.json and no
-    # node_modules — the page scripts are plain files the browser loads.
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - name: eslint
-        # Explicit paths, not `.`: a bare `.` walks rust/target and android/out
-        # and lints the generated Tauri codegen bundles, which are not ours.
-        # The config scopes its rules to exactly these files; correctness rules
-        # are errors, the style rules are warnings and do not fail the job.
-        run: npx --yes eslint@9.39.1 app.js api.js lib/*.js
-
   rust-lint:
     name: rust lint
     # Blocking: the tree is rustfmt-clean, so a red lint job means a real
