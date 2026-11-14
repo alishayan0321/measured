@@ -23,6 +23,8 @@
  *   - any console line matching /not allowed by ACL|Uncaught/ fails the run;
  *   - a click step that throws or whose assertion fails fails the run;
  *   - the library must paint at least one row;
+ *   - a second launch must exit and leave exactly one process and one page
+ *     target; a rival window fails the run;
  *   - a BLOCKED step fails the run, with one exception: the native file picker
  *     is BLOCKED by design. It is an OS-level modal dialog, the one surface CDP
  *     can neither observe nor dismiss, and a renderer waiting on it stops
@@ -745,6 +747,68 @@ async function main() {
     console.log(`snapshot   ${snapshot.rejections.length} rejection(s), ${snapshot.errors.length} error(s), ` +
       `${snapshot.console.length} console line(s), ${denialCount} matching /not allowed by ACL|denied/ — read before the picker`);
     console.log('');
+
+    // ---------------------------------------------------------- second launch
+
+    // A second launch must hand its argv to the running copy and exit, not open
+    // a rival window that races the first on settings.json. This runs after the
+    // collectors snapshot and before the picker, so the page still answers and
+    // no modal dialog is up. The second process is launched WITHOUT
+    // WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: inheriting the debugging port would
+    // make it fight the first instance for the same CDP endpoint, which is a
+    // different failure from the one under test.
+    await step('second launch focuses the first instead of opening a rival', async () => {
+      const secondEnv = { ...process.env };
+      delete secondEnv.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS;
+      const startedAt = Date.now();
+      const second = spawn(EXE, [], { env: secondEnv, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: false });
+      let secondExit = null;
+      second.on('exit', (code, signal) => { secondExit = { code, signal }; });
+
+      const deadline = startedAt + 8000;
+      while (Date.now() < deadline && !secondExit) await sleep(150);
+      if (!secondExit) {
+        // Leaving a rival window up would poison every later run, so kill it
+        // before failing.
+        spawn('taskkill', ['/PID', String(second.pid), '/T', '/F'], { stdio: 'ignore' });
+        return { ok: false, detail: `the second launch was still running after 8 s (pid ${second.pid}) — a rival window is up` };
+      }
+      if (exited) {
+        const code = exited.code === null ? 'signal ' + (exited.signal || 'unknown') : 'code ' + exited.code;
+        return { ok: false, detail: `the first instance exited while the second launched (${code})` };
+      }
+
+      // Exactly one process whose image path is this exe. Get-Process is the
+      // only way to see the image path; -ErrorAction SilentlyContinue keeps a
+      // process that vanished mid-query from throwing.
+      const psPath = EXE.replace(/'/g, "''");
+      const ps = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command',
+        `@(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq '${psPath}' }).Count`],
+        { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+      let psOut = '';
+      ps.stdout.on('data', (d) => { psOut += d.toString(); });
+      ps.stderr.on('data', (d) => { psOut += d.toString(); });
+      const psCode = await new Promise((res) => ps.on('exit', (c) => res(c)));
+      const raw = String(psOut).trim();
+      const count = Number(raw);
+      if (psCode !== 0 || raw === '' || !Number.isInteger(count)) {
+        return { ok: false, detail: `Get-Process failed (exit ${psCode}): ${raw.slice(0, 200) || '<no output>'}` };
+      }
+      if (count !== 1) {
+        return { ok: false, detail: `${count} processes run ${EXE}; a second window means FAIL` };
+      }
+
+      // The first instance's CDP endpoint must still expose exactly one page
+      // target: a second window would add another.
+      const list = await fetchJson(`http://127.0.0.1:${port}/json/list`);
+      const pages = list.filter((t) => t.type === 'page' && t.webSocketDebuggerUrl && !/^devtools:/i.test(t.url || ''));
+      if (pages.length !== 1) {
+        return { ok: false, detail: `${pages.length} page targets on the first instance (wanted 1)` };
+      }
+
+      const code = secondExit.code === null ? 'signal ' + (secondExit.signal || 'unknown') : 'code ' + secondExit.code;
+      return { ok: true, detail: `second launch exited (${code}) in ${Date.now() - startedAt} ms; 1 process, 1 page target` };
+    });
 
     // Last: this opens a native OS file dialog on the Rust side. Nothing in the
     // page can close it, so it runs after every other assertion AND after the
