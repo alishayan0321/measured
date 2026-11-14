@@ -50,9 +50,6 @@ public class MediaService extends Service {
     private String artKey = "";
     private Bitmap art = null;
 
-    private AudioManager am;
-    private AudioManager.OnAudioFocusChangeListener focus;
-    private Object focusRequest;          // AudioFocusRequest on API 26+, unused below
     private boolean noisyOn = false;
 
     /* Headphones unplugged: the page must stop, or the song keeps playing out of
@@ -92,55 +89,16 @@ public class MediaService extends Service {
         session.setSessionActivity(openPi);
         session.setActive(true);
 
-        /* Music focus is what makes a call or another player stop us, instead of
-           both apps talking at once. */
-        am = (AudioManager) getSystemService(AUDIO_SERVICE);
-        focus = new AudioManager.OnAudioFocusChangeListener() {
-            @Override public void onAudioFocusChange(int change) {
-                if (change == AudioManager.AUDIOFOCUS_LOSS
-                        || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
-                    playing = false;
-                    cmd("pause", 0);
-                }
-                /* LOSS_TRANSIENT_CAN_DUCK needs no action here: the framework has
-                   already attenuated this app's stream, and pausing for a
-                   notification blip would be the wrong trade. */
-            }
-        };
+        /* This service does NOT request audio focus. The audio is produced by the
+           page's <audio> element, so Chromium owns the app's focus request and
+           already pauses on loss and ducks for notifications. A second request
+           from here fights it: whichever asks second takes focus, the other gets
+           onAudioFocusChange(AUDIOFOCUS_LOSS), and the resulting pause makes the
+           two clients cancel each other so no track ever starts. */
         IntentFilter filter = new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(noisy, filter, Context.RECEIVER_NOT_EXPORTED);
         else registerReceiver(noisy, filter);
         noisyOn = true;
-    }
-
-    private void takeFocus() {
-        if (am == null) return;
-        if (Build.VERSION.SDK_INT >= 26) {
-            android.media.AudioFocusRequest req = new android.media.AudioFocusRequest.Builder(
-                    AudioManager.AUDIOFOCUS_GAIN)
-                    .setAudioAttributes(new android.media.AudioAttributes.Builder()
-                            .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
-                            .build())
-                    .setOnAudioFocusChangeListener(focus)
-                    .setWillPauseWhenDucked(false)
-                    .build();
-            focusRequest = req;
-            am.requestAudioFocus(req);
-        } else {
-            am.requestAudioFocus(focus, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
-        }
-    }
-
-    private void dropFocus() {
-        if (am == null) return;
-        if (Build.VERSION.SDK_INT >= 26) {
-            android.media.AudioFocusRequest req = (android.media.AudioFocusRequest) focusRequest;
-            if (req != null) am.abandonAudioFocusRequest(req);
-            focusRequest = null;
-        } else {
-            am.abandonAudioFocus(focus);
-        }
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
@@ -165,7 +123,6 @@ public class MediaService extends Service {
             if (!a.equals(artKey)) { artKey = a; art = decodeArt(a); }
             publish();
             startForeground(NOTIF_ID, build());
-            if (playing) takeFocus(); else dropFocus();
         } catch (Throwable ignored) { /* a bad payload must not kill playback */ }
         return START_NOT_STICKY;
     }
@@ -173,8 +130,8 @@ public class MediaService extends Service {
     private void cmd(String c, long arg) {
         if (c == null) return;
         // optimistic local flip so the card reacts instantly, the page re-syncs after
-        if ("play".equals(c)) { playing = true; takeFocus(); }
-        else if ("pause".equals(c)) { playing = false; dropFocus(); }
+        if ("play".equals(c)) { playing = true; }
+        else if ("pause".equals(c)) { playing = false; }
         try { publish(); startForeground(NOTIF_ID, build()); } catch (Throwable ignored) { }
         if (sink != null) sink.exec(c, arg);
     }
@@ -286,7 +243,6 @@ public class MediaService extends Service {
             try { unregisterReceiver(noisy); } catch (Throwable ignored) { }
             noisyOn = false;
         }
-        dropFocus();
         try {
             if (session != null) {
                 session.setActive(false);
