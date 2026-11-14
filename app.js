@@ -1757,7 +1757,6 @@ const tabYt = document.getElementById('tab-yt');
 const modeEl = document.getElementById('yt-mode');
 
 const canYt = !!(window.AndroidBridge && AndroidBridge.ytSearch) || !!(window.__TAURI__ && PlayerAPI.engine === 'tauri');
-const invoke = (canYt && window.__TAURI__ && window.__TAURI__.core) ? window.__TAURI__.core.invoke : null;
 const hero = document.querySelector('.hero');
 const deck = document.querySelector('.deck');
 if (!hero || !deck) return;
@@ -2350,7 +2349,8 @@ window.__ytSearch = search;
         webSeedTerm = webTermOf(cand) || webSeedTerm;
         webHasRows = true;
         try {
-          if (cand.ytId) playAudio({ id: cand.ytId, title: cand.title, author: cand.artist, seconds: cand.seconds, thumb: cand.thumb, views: '' });
+          /* playAudio is local to nowhere(); PlayerAPI.playAudio is the handle it publishes. */
+          if (cand.ytId) PlayerAPI.playAudio({ id: cand.ytId, title: cand.title, author: cand.artist, seconds: cand.seconds, thumb: cand.thumb, views: '' });
           else playOnline(cand);
         } catch (e) {}
         paintTabs('up');
