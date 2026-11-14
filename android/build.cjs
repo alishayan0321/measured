@@ -229,6 +229,24 @@ if (!FAST) {
   console.log(`  staged ${files.length} songs  ${(bytes / 1048576).toFixed(0)} MB`);
 }
 
+// library.json is tracked in git and describes the whole collection, but a build
+// may stage only a subset of it (or none at all with --fast). Ship only the
+// entries whose audio actually landed in the APK: a listed track with no file
+// renders as "unreadable" with a 0:00 duration on the device.
+{
+  const libPath = path.join(webDir, 'library.json');
+  if (fs.existsSync(libPath)) {
+    const songsDir = path.join(ASSETS, 'songs');
+    const staged = new Set(fs.existsSync(songsDir) ? fs.readdirSync(songsDir) : []);
+    const all = JSON.parse(fs.readFileSync(libPath, 'utf8'));
+    const kept = all.filter((e) => staged.has(e.file));
+    if (kept.length !== all.length) {
+      fs.writeFileSync(libPath, JSON.stringify(kept));
+      console.log(`  library.json: kept ${kept.length}/${all.length} (audio not staged)`);
+    }
+  }
+}
+
 // ── 2. resources ─────────────────────────────────────────────────────────────
 const compiled = path.join(HERE, 'res.zip');
 rm(compiled);
