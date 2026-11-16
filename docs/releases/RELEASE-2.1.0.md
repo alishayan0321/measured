@@ -61,7 +61,12 @@ The parser fixture is the other shared contract: 33 vectors, run by `test/parse.
 
 ### The `0x800700AA` launch panic
 
-A `0x800700AA` (`ERROR_BUSY`) panic was seen during testing, and it is not a property of the shipped artifact. Measured: the publish build at `%LOCALAPPDATA%\MEASURED\MEASURED.exe` — 29,980,672 bytes, SHA-256 `EA494BD5…E719` — launches, and a second concurrent launch also opens a window; both survive with empty stderr, so the shipped path produces no `0x800700AA`. The panic reproduces only for copies that inherit the agent workspace folder's Low integrity label: a Low-labelled copy moved to `C:\mt` still panics, and setting the same copy's label to Medium makes it launch. It is not path spaces, not the working directory and not concurrency. The likely mechanism is that a Low-integrity process cannot write the Medium-integrity WebView2 user-data folder — that is an explanation, not a measurement, and only the label correlation is proven.
+A `0x800700AA` (`ERROR_BUSY`) panic was seen during testing, and it is not a property of the shipped artifact. Measured: the publish build at `%LOCALAPPDATA%\MEASURED\MEASURED.exe` — 29,980,672 bytes, SHA-256 `EA494BD5…E719` — launches, and a second concurrent launch also opens a window; both survive with empty stderr, so the shipped path produces no `0x800700AA`.
+
+Two distinct causes were observed, and they are not the same bug:
+
+* **Low mandatory integrity label.** The panic reproduces only for copies that inherit the agent workspace folder's Low integrity label: a Low-labelled copy moved to `C:\mt` still panics, and setting the same copy's label to Medium makes it launch. It is not path spaces, not the working directory and not concurrency. The likely mechanism is that a Low-integrity process cannot write the Medium-integrity WebView2 user-data folder — that is an explanation, not a measurement, and only the label correlation is proven.
+* **WebView2 user-data-folder contention.** `ERROR_BUSY` is also what WebView2 returns when a second process is handed a user-data folder that a live or orphaned `msedgewebview2.exe` tree still holds. Tauri 2.12.5 forces that folder to `app_local_data_dir()` — `tauri-2.12.5/src/manager/webview.rs:559-569`, "in `windows`, we need to force a data_directory" — and wry 0.57.1 passes it as the explicit second argument to `CreateCoreWebView2EnvironmentWithOptions` (`wry-0.57.1/src/webview2/mod.rs:357-359`). An explicit folder makes WebView2 ignore the `WEBVIEW2_USER_DATA_FOLDER` environment variable, so that variable is inert for this app and is **not** a workaround. What does work is killing the orphaned `msedgewebview2.exe` children before launching; the durable fix is a per-instance `data_directory` set in code.
 
 ### Scope amendments
 
