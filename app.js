@@ -319,6 +319,11 @@
   }
 
   let TRACKS = [], VIEW = [], cur = -1, playing = false, median = null;
+  /* What the element is holding right now: a local file, a streamed preview, or a
+     YouTube stream. The error handler below only rescues local files — the other
+     two have their own recovery, and treating their failures as a moved file
+     announces the wrong reason and can transcode an unrelated library track. */
+  let srcKind = 'local';
 
   /* ---- ranker plug ---------------------------------------------------------
      The math lives in lib/recommend.js, the feature building in
@@ -780,6 +785,7 @@
     } else {
       lastNativeFile = t.file || '';      /* native extension, codec still unproven */
     }
+    srcKind = 'local';
     audio.src = proxied(url); audio.load();
     if (String(url).indexOf('asset.localhost') !== -1) tapSource(url); else tapStop();
     if (autoplay) play(); else icon(false);
@@ -1042,6 +1048,11 @@
     sk.setAttribute('aria-valuenow', String(Math.round(at)));
   });
   audio.addEventListener('error', async () => {
+    /* Only a local file can have been "moved or deleted". A streamed preview and a
+       YouTube stream each have their own recovery path; running the local rescue
+       here would announce the wrong reason and could transcode an unrelated
+       library track while a stream is the thing that failed. */
+    if (srcKind !== 'local') return;
     const t = VIEW[cur];
     /* A "native" extension can still hide a codec the WebView refuses to decode
        (ALAC inside .m4a). One forced transcode rescues those instead of telling the
@@ -1093,7 +1104,33 @@
     } catch (e) {}
   }
 
-  async function playOnline(cand) {
+  /* Start one streamed clip and report whether it actually began. A preview URL
+     can be expired or refused, and `play()` alone does not prove the element got
+     audio: error 4 rejects it, but a late failure only surfaces as an `error`
+     event. Both count as "did not start". */
+  function startClip(url) {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (v) => { if (!done) { done = true; cleanup(); resolve(v); } };
+      const cleanup = () => {
+        audio.removeEventListener('playing', onPlaying);
+        audio.removeEventListener('error', onError);
+        clearTimeout(timer);
+      };
+      const onPlaying = () => finish(true);
+      const onError = () => finish(false);
+      const timer = setTimeout(() => finish(!audio.paused && audio.readyState >= 2), 6000);
+      audio.addEventListener('playing', onPlaying);
+      audio.addEventListener('error', onError);
+      audio.src = proxied(url);
+      audio.load();
+      audio.play().then(() => finish(true)).catch(() => finish(false));
+      if (!audio.paused && audio.readyState >= 2) finish(true);
+    });
+  }
+
+  async function playOnline(cand, depth) {
+    depth = depth || 0;
     ONLINE = cand;
     cur = -1;
     curFile = '';
@@ -1103,7 +1140,24 @@
       cover: cand.art || '', bands: [], codec: 'AAC', dur: cand.seconds || 30, ext: 'm4a',
     });
     announce('Online preview: ' + (clean(cand.title) || 'untitled'));
-    try { audio.src = proxied(cand.url); await audio.play(); } catch (e) { announce('That preview would not play.'); }
+    srcKind = 'online';
+    if (await startClip(cand.url)) return;
+    /* The CDN hands out short-lived URLs, so one re-resolve is usually enough.
+       If the second try fails too, name the reason and move on: a stopped player
+       sitting on a clip that will never start reads as a frozen app. */
+    let fresh = null;
+    try {
+      const found = SHELF ? await SHELF.suggest(cand.artist + ' ' + cand.title, 8) : [];
+      fresh = (found || []).filter((c) => c.id === cand.id && c.url && c.url !== cand.url)[0] || null;
+    } catch (e) { /* no re-resolve available; fall through to the skip */ }
+    if (fresh && await startClip(fresh.url)) return;
+    playing = false;
+    icon(false);
+    announce('Skipped ' + (clean(cand.title) || 'that preview') + ' \u2014 the preview would not play.');
+    ONLINE = null;
+    if (depth < 2) { await onlineNext(depth + 1); return; }
+    announce('Nothing left to play.');
+    step(1);
   }
 
   /* The local pool is spent: buffer a clip from the shelf and stream it. */
@@ -1121,7 +1175,7 @@
         cand = SHELF.next();
       }
     }
-    if (cand) { await playOnline(cand); return; }
+    if (cand) { await playOnline(cand, depth); return; }
     if (depth < 2) { await onlineNext(depth + 1); return; }
     announce('Nothing left to play.');
     step(1);
@@ -1901,6 +1955,7 @@ async function playAudio(v) {
         link = (again && again.url) ? again.url : (typeof again === 'string' ? again : url);
       }
       if (gen !== ytGen) return false;
+      srcKind = 'yt';
       audio.src = proxied(link, res && res.contentLength);
       audio.load();
       playing = true;
