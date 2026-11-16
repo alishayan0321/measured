@@ -186,14 +186,19 @@ fn mime_for(path: &str) -> &'static str {
     }
 }
 
-/// Only `googlevideo.com` and its subdomains. This is the whole point of the
-/// `/u` endpoint, so anything else is a bug or an attack.
+/// Hosts `/u` may reach: googlevideo for the YouTube audio, and Apple's preview
+/// CDN for the 30 s shelf clips. Anything else is a bug or an attack.
+///
+/// The Apple host is matched exactly and only over https. A suffix match would
+/// let `audio-ssl.itunes.apple.com.evil.com` through, and a plaintext hop would
+/// send the WebView's Origin in the clear.
 fn upstream_allowed(url: &str) -> bool {
-    let rest = match url
+    let (scheme, rest) = match url
         .strip_prefix("https://")
-        .or_else(|| url.strip_prefix("http://"))
+        .map(|r| ("https", r))
+        .or_else(|| url.strip_prefix("http://").map(|r| ("http", r)))
     {
-        Some(r) => r,
+        Some(pair) => pair,
         None => return false,
     };
     let host_port = rest.split(['/', '?', '#']).next().unwrap_or("");
@@ -202,7 +207,10 @@ fn upstream_allowed(url: &str) -> bool {
         .next()
         .unwrap_or("")
         .to_ascii_lowercase();
-    host == "googlevideo.com" || host.ends_with(".googlevideo.com")
+    if host == "googlevideo.com" || host.ends_with(".googlevideo.com") {
+        return true;
+    }
+    scheme == "https" && host == "audio-ssl.itunes.apple.com"
 }
 
 /// True when `path` resolves inside one of the app's own media directories.
@@ -329,6 +337,19 @@ fn client() -> Result<&'static reqwest::Client, String> {
     let built = reqwest::Client::builder()
         .user_agent(UA)
         .timeout(std::time::Duration::from_secs(30))
+        // A redirect is a second request to a host the caller never named, so
+        // every hop is re-checked against the same allowlist. Without this a
+        // googlevideo URL could bounce `/u` to anywhere.
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            if attempt.previous().len() >= 5 {
+                return attempt.error("too many redirects");
+            }
+            if upstream_allowed(attempt.url().as_str()) {
+                attempt.follow()
+            } else {
+                attempt.error("redirect left the allowlist")
+            }
+        }))
         .build()
         .map_err(|e| e.to_string())?;
     let _ = CLIENT.set(built);
@@ -558,4 +579,95 @@ pub fn start(roots: Vec<PathBuf>) -> String {
         }
     });
     format!("http://127.0.0.1:{port}/{token}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+
+    #[test]
+    fn googlevideo_hosts_are_allowed() {
+        assert!(upstream_allowed(
+            "https://rr3---sn-abc.googlevideo.com/videoplayback?x=1"
+        ));
+        assert!(upstream_allowed("https://googlevideo.com/x"));
+    }
+
+    #[test]
+    fn itunes_preview_host_is_allowed_over_https() {
+        assert!(upstream_allowed(
+            "https://audio-ssl.itunes.apple.com/itunes-assets/x.m4a"
+        ));
+    }
+
+    #[test]
+    fn itunes_preview_host_over_http_is_refused() {
+        assert!(!upstream_allowed(
+            "http://audio-ssl.itunes.apple.com/itunes-assets/x.m4a"
+        ));
+    }
+
+    #[test]
+    fn itunes_lookalike_hosts_are_refused() {
+        assert!(!upstream_allowed(
+            "https://audio-ssl.itunes.apple.com.evil.com/x.m4a"
+        ));
+        assert!(!upstream_allowed(
+            "https://evil.com/audio-ssl.itunes.apple.com"
+        ));
+        assert!(!upstream_allowed(
+            "https://evil.com@audio-ssl.itunes.apple.com/x"
+        ));
+        assert!(!upstream_allowed("https://notaudio-ssl.itunes.apple.com/x"));
+    }
+
+    #[test]
+    fn non_allowlisted_hosts_are_refused() {
+        assert!(!upstream_allowed("https://example.com/x"));
+        assert!(!upstream_allowed("file:///etc/passwd"));
+        assert!(!upstream_allowed(""));
+    }
+
+    /// One-shot loopback server: answers the first request with `status` and
+    /// `extra` headers, then stops. Returns the port.
+    fn one_shot(status: &'static str, extra: &'static str) -> u16 {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind");
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            if let Ok((mut s, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = s.read(&mut buf);
+                let body = b"ok";
+                let head = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: audio/mp4\r\nContent-Length: {}\r\n{extra}\r\n",
+                    body.len()
+                );
+                let _ = s.write_all(head.as_bytes());
+                let _ = s.write_all(body);
+                let _ = s.flush();
+            }
+        });
+        port
+    }
+
+    #[test]
+    fn a_plain_response_still_works() {
+        let port = one_shot("200 OK", "");
+        let (bytes, ctype) = fetch_range(&format!("http://127.0.0.1:{port}/x"), 0, 1)
+            .expect("plain 200 should pass");
+        assert_eq!(bytes, b"ok");
+        assert_eq!(ctype, "audio/mp4");
+    }
+
+    #[test]
+    fn a_redirect_to_a_non_allowlisted_host_is_refused() {
+        let port = one_shot("302 Found", "Location: https://evil.example/x\r\n");
+        let err = fetch_range(&format!("http://127.0.0.1:{port}/x"), 0, 1)
+            .expect_err("the redirect policy must refuse an off-allowlist hop");
+        assert!(
+            err.to_lowercase().contains("redirect"),
+            "unexpected error: {err}"
+        );
+    }
 }
