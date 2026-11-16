@@ -47,15 +47,16 @@ function extractInjector(src) {
 }
 
 /* Rebuild the injector in a scope where SHELF is the same late-bound variable
-   app.js uses: create() runs first, then the shelf is assigned. */
-function buildInjector(AudioStub) {
+   app.js uses: create() runs first, then the shelf is assigned. `proxied` is
+   app.js's loopback wrapper; identity here means "no proxy configured". */
+function buildInjector(AudioStub, proxied) {
   const fnSrc = extractInjector(appSrc);
-  const build = new Function('Audio', `
+  const build = new Function('Audio', 'proxied', `
     var SHELF = null;
     var makeAudio = ${fnSrc};
     return { makeAudio: makeAudio, setShelf: function (s) { SHELF = s; } };
   `);
-  return build(AudioStub);
+  return build(AudioStub, proxied || ((u) => u));
 }
 
 /* Minimal Audio stand-in: records instances so the test can fire the events the
@@ -74,9 +75,9 @@ function audioClass() {
   return { FakeAudio, made };
 }
 
-function realShelf() {
+function realShelf(proxied) {
   const { FakeAudio, made } = audioClass();
-  const inj = buildInjector(FakeAudio);
+  const inj = buildInjector(FakeAudio, proxied);
   const shelf = S.create({
     fetchJson: () => Promise.resolve(FIXTURE),
     makeAudio: inj.makeAudio,
@@ -136,6 +137,21 @@ t('real app.js injector: the Audio it builds is preloaded and load()ed', async (
   assert.strictEqual(made[0].preload, 'auto');
   assert.strictEqual(made[0].src, 'https://x/1.m4a');
   assert.strictEqual(made[0].loaded, true);
+});
+
+t('real app.js injector: the clip goes through the loopback proxy when one exists', async () => {
+  const seen = [];
+  const proxied = (u) => {
+    seen.push(u);
+    return 'http://127.0.0.1:9/tok/u?u=' + encodeURIComponent(u);
+  };
+  const { shelf, made } = realShelf(proxied);
+  await shelf.search('seed');
+  assert.deepStrictEqual(seen, ['https://x/1.m4a', 'https://x/2.m4a']);
+  assert.ok(
+    made[0].src.startsWith('http://127.0.0.1:9/tok/u?u='),
+    'the clip must be proxied so media-src needs no Apple host'
+  );
 });
 
 /* ------------------------------------------------------------------- runner */

@@ -567,7 +567,10 @@
           makeAudio: (src, id) => {
             const a = new Audio();
             a.preload = 'auto';
-            a.src = src;
+            /* Through the loopback proxy like every other remote source: the
+               clip then arrives with ACAO so the EQ can read it, and media-src
+               needs no Apple host. */
+            a.src = proxied(src);
             a.addEventListener('canplaythrough', () => { try { SHELF.markReady(id, true); } catch (e) {} });
             a.addEventListener('error', () => { try { SHELF.markReady(id, false); } catch (e) {} });
             try { a.load(); } catch (e) {}
